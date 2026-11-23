@@ -11,201 +11,197 @@
   <div class="bg-glow bg-glow-2"></div>
   <canvas id="fxCanvas" class="fx-canvas"></canvas>
 
-  <main class="app-shell">
-    <!-- 顶部通栏：左侧极简品牌标题 + 右侧恒定高度状态控制条（0跳动） -->
-    <header class="top-bar">
-      <div class="brand-area">
-        <h1 class="app-title">今天吃什么？</h1>
-        <span class="app-subtitle" id="appSubtitle">三步锁定今日天命美食</span>
-      </div>
-
-      <div class="status-stage">
-        <!-- 自己做状态层 -->
-        <div id="cookStatusLayer" class="status-layer active">
-          <div class="loc-left">
-            <span class="status-icon-badge">🍳</span>
-            <span class="loc-text-ellipsis">家庭厨房模式 · 本地商超食材可做</span>
-          </div>
-          <div class="status-right-tag">右侧实时展开完整图文食谱</div>
-        </div>
-
-        <!-- 点外卖状态层 -->
-        <div id="takeoutStatusLayer" class="status-layer">
-          <div class="loc-left">
-            <span class="loc-dot" id="locDot"></span>
-            <span id="locText" class="loc-text-ellipsis">正在扫描周边外卖店铺...</span>
-          </div>
-          <div class="loc-actions">
-            <select id="radiusSelect" class="city-select" title="选择外卖配送扫描范围">
-              <option value="1000">1km内</option>
-              <option value="3000" selected>3km内</option>
-              <option value="5000">5km内</option>
-            </select>
-            <select id="cityPreset" class="city-select" title="切换城市/商圈">
-              <option value="">切换城市</option>
-              <option value="31.2304,121.4737,上海市·人民广场">上海市</option>
-              <option value="39.9042,116.4074,北京市·王府井">北京市</option>
-              <option value="23.1291,113.2644,广州市·天河城">广州市</option>
-              <option value="22.5431,114.0579,深圳市·福田中心">深圳市</option>
-              <option value="30.6574,104.0815,成都市·春熙路">成都市</option>
-              <option value="30.2741,120.1551,杭州市·西湖湖滨">杭州市</option>
-              <option value="30.5928,114.3055,武汉市·江汉路">武汉市</option>
-              <option value="28.2282,112.9388,长沙市·五一广场">长沙市</option>
-              <option value="29.5630,106.5516,重庆市·解放碑">重庆市</option>
-              <option value="34.3416,108.9398,西安市·钟楼">西安市</option>
-            </select>
-            <button type="button" id="btnRelocate" class="loc-btn" title="重新扫描定位">📍</button>
-            <button type="button" id="btnSourceConfig" class="loc-btn" title="配置高德官方周边商户Key（可选）">⚙️</button>
-          </div>
-        </div>
-      </div>
+  <main class="app-container">
+    <!-- 顶部极简标题 -->
+    <header class="app-header">
+      <h1 class="app-title">今天吃什么？</h1>
     </header>
 
-    <!-- 主体宽屏双栏 Bento 布局（桌面左右并排，移动端自然垂直堆叠） -->
-    <div class="main-grid">
-      <!-- 左栏：三步点选器 + 老虎机抽卡控制台 + 历史记录 -->
-      <section class="left-panel">
-        <!-- STEP 1 & STEP 2 -->
-        <div class="step-row-split">
-          <div class="step-card">
-            <div class="step-label">
-              <span class="step-num">1</span>
-              <span class="step-name">选择餐段</span>
-            </div>
-            <div class="segmented-control cols-3" id="mealGroup" style="--active-idx: 0;">
-              <div class="segment-glider"></div>
-              <button type="button" class="segment-btn active" data-meal="breakfast" data-idx="0">
-                <span class="pill-icon">🌅</span><span>早餐</span>
-              </button>
-              <button type="button" class="segment-btn" data-meal="lunch" data-idx="1">
-                <span class="pill-icon">☀️</span><span>午餐</span>
-              </button>
-              <button type="button" class="segment-btn" data-meal="dinner" data-idx="2">
-                <span class="pill-icon">🌙</span><span>晚餐</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="step-card">
-            <div class="step-label">
-              <span class="step-num">2</span>
-              <span class="step-name">就餐方式</span>
-            </div>
-            <div class="segmented-control cols-2" id="modeGroup" style="--active-idx: 0;">
-              <div class="segment-glider"></div>
-              <button type="button" class="segment-btn active" data-mode="cook" data-idx="0">
-                <span class="pill-icon">🍳</span><span>自己做</span>
-              </button>
-              <button type="button" class="segment-btn" data-mode="takeout" data-idx="1">
-                <span class="pill-icon">🛵</span><span>点外卖</span>
-              </button>
-            </div>
-          </div>
+    <!-- 恒定高度状态控制条（自己做 / 点外卖原地平滑淡入淡出，0高度跳动） -->
+    <div class="status-stage">
+      <!-- 自己做状态层 -->
+      <div id="cookStatusLayer" class="status-layer active">
+        <div class="loc-left">
+          <span class="status-icon-badge">🍳</span>
+          <span class="loc-text-ellipsis">家庭厨房模式 · 本地商超食材可做</span>
         </div>
+        <div class="status-right-tag">抽中可点开详细图文食谱</div>
+      </div>
 
-        <!-- STEP 3: 3×4 完美对称菜系网格（全随机占2格 + 10菜系 = 12格，彻底消除最后一行空缺） -->
+      <!-- 点外卖状态层 -->
+      <div id="takeoutStatusLayer" class="status-layer">
+        <div class="loc-left">
+          <span class="loc-dot" id="locDot"></span>
+          <span id="locText" class="loc-text-ellipsis">正在扫描周边外卖店铺...</span>
+        </div>
+        <div class="loc-actions">
+          <select id="radiusSelect" class="city-select" title="选择外卖配送扫描范围">
+            <option value="1000">1km内</option>
+            <option value="3000" selected>3km内</option>
+            <option value="5000">5km内</option>
+          </select>
+          <select id="cityPreset" class="city-select" title="切换城市/商圈">
+            <option value="">切换城市</option>
+            <option value="31.2304,121.4737,上海市·人民广场">上海市</option>
+            <option value="39.9042,116.4074,北京市·王府井">北京市</option>
+            <option value="23.1291,113.2644,广州市·天河城">广州市</option>
+            <option value="22.5431,114.0579,深圳市·福田中心">深圳市</option>
+            <option value="30.6574,104.0815,成都市·春熙路">成都市</option>
+            <option value="30.2741,120.1551,杭州市·西湖湖滨">杭州市</option>
+            <option value="30.5928,114.3055,武汉市·江汉路">武汉市</option>
+            <option value="28.2282,112.9388,长沙市·五一广场">长沙市</option>
+            <option value="29.5630,106.5516,重庆市·解放碑">重庆市</option>
+            <option value="34.3416,108.9398,西安市·钟楼">西安市</option>
+          </select>
+          <button type="button" id="btnRelocate" class="loc-btn" title="重新扫描定位">📍</button>
+          <button type="button" id="btnSourceConfig" class="loc-btn" title="配置高德官方周边商户Key（可选）">⚙️</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 三步式选择面板 -->
+    <section class="steps-panel">
+      <div class="step-row-split">
+        <!-- STEP 1: 早中晚 -->
         <div class="step-card">
           <div class="step-label">
-            <span class="step-num">3</span>
-            <span class="step-name">选择菜系风味</span>
-            <span class="pool-count" id="poolCount">候选 <b id="poolCountNum">--</b> 道</span>
+            <span class="step-num">1</span>
+            <span class="step-name">选择餐段</span>
           </div>
-          <div class="cuisine-grid" id="cuisineGroup">
-            <button type="button" class="cuisine-chip active" data-cuisine="all">🎲 全菜系随机</button>
-            <button type="button" class="cuisine-chip" data-cuisine="家常中菜">🏠 家常中菜</button>
-            <button type="button" class="cuisine-chip" data-cuisine="川渝菜">🌶️ 川渝菜</button>
-            <button type="button" class="cuisine-chip" data-cuisine="粤港澳">🦐 粤港澳</button>
-            <button type="button" class="cuisine-chip" data-cuisine="湘鄂赣">🔥 湘鄂赣</button>
-            <button type="button" class="cuisine-chip" data-cuisine="江浙沪">🦀 江浙沪</button>
-            <button type="button" class="cuisine-chip" data-cuisine="东北鲁菜">🥟 东北鲁菜</button>
-            <button type="button" class="cuisine-chip" data-cuisine="西北晋豫">🍜 西北晋豫</button>
-            <button type="button" class="cuisine-chip" data-cuisine="云贵桂闽">🍲 云贵桂闽</button>
-            <button type="button" class="cuisine-chip" data-cuisine="日韩亚太">🍣 日韩亚太</button>
-            <button type="button" class="cuisine-chip" data-cuisine="欧美西餐">🥩 欧美西餐</button>
-          </div>
-        </div>
-
-        <!-- 老虎机滚轮机 -->
-        <div class="slot-machine-section">
-          <div class="slot-frame" id="slotFrame">
-            <div class="slot-lights">
-              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-            </div>
-
-            <div class="slot-window" id="slotWindow">
-              <div class="slot-fade-top"></div>
-              <div class="slot-speed-lines" id="slotSpeedLines"></div>
-              <div class="slot-center-highlight">
-                <div class="slot-pointer left">▶</div>
-                <div class="slot-pointer right">◀</div>
-              </div>
-              <div class="slot-shockwave" id="slotShockwave"></div>
-              <div class="slot-reel" id="slotReel">
-                <div class="reel-card">
-                  <div class="dish-emoji">🎰</div>
-                  <div class="dish-name-wrap">
-                    <div class="dish-name">准备开抽</div>
-                  </div>
-                  <div class="dish-badges">
-                    <span class="badge badge-cuisine">选好三步条件</span>
-                    <span class="badge badge-mode">点击下方按钮</span>
-                    <span class="badge badge-flavor">一秒决定</span>
-                  </div>
-                </div>
-              </div>
-              <div class="slot-fade-bottom"></div>
-            </div>
-          </div>
-
-          <div class="draw-action-bar">
-            <button type="button" id="btnDraw" class="draw-btn">
-              <span class="draw-btn-shine"></span>
-              <span class="draw-btn-icon">🎰</span>
-              <span class="draw-btn-text">开始抽卡</span>
+          <div class="segmented-control cols-3" id="mealGroup" style="--active-idx: 0;">
+            <div class="segment-glider"></div>
+            <button type="button" class="segment-btn active" data-meal="breakfast" data-idx="0">
+              <span class="pill-icon">🌅</span><span>早餐</span>
+            </button>
+            <button type="button" class="segment-btn" data-meal="lunch" data-idx="1">
+              <span class="pill-icon">☀️</span><span>午餐</span>
+            </button>
+            <button type="button" class="segment-btn" data-meal="dinner" data-idx="2">
+              <span class="pill-icon">🌙</span><span>晚餐</span>
             </button>
           </div>
         </div>
 
-        <!-- 今日抽卡历史栏 -->
-        <div id="historySection" class="history-section">
-          <div class="history-header">
-            <span class="history-title">今日已抽中</span>
-            <span class="history-hint">点击胶囊可切换回看</span>
+        <!-- STEP 2: 自己做 / 外卖 -->
+        <div class="step-card">
+          <div class="step-label">
+            <span class="step-num">2</span>
+            <span class="step-name">就餐方式</span>
           </div>
-          <div class="history-list" id="historyList">
-            <span class="history-empty">暂无记录 · 抽中的美食会出现在这里</span>
+          <div class="segmented-control cols-2" id="modeGroup" style="--active-idx: 0;">
+            <div class="segment-glider"></div>
+            <button type="button" class="segment-btn active" data-mode="cook" data-idx="0">
+              <span class="pill-icon">🍳</span><span>自己做</span>
+            </button>
+            <button type="button" class="segment-btn" data-mode="takeout" data-idx="1">
+              <span class="pill-icon">🛵</span><span>点外卖</span>
+            </button>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- 右栏：本页专属内容展台（自己做=完整图文食谱；点外卖=抽中实店详情 + 周边已分类店铺清单） -->
-      <section class="right-panel" id="rightShowcasePanel">
-        <!-- 顶部固定操作头（恒定高度，无跳动） -->
-        <div class="showcase-header" id="showcaseHeader">
-          <div class="showcase-header-title" id="showcaseTitle">✨ 抽选结果与详情展台</div>
-          <div class="showcase-header-actions" id="showcaseActions"></div>
+      <!-- STEP 3: 3×4 完美对称菜系网格 -->
+      <div class="step-card">
+        <div class="step-label">
+          <span class="step-num">3</span>
+          <span class="step-name">选择菜系风味</span>
+          <span class="pool-count" id="poolCount">候选 <b id="poolCountNum">--</b> 道</span>
+        </div>
+        <div class="cuisine-grid" id="cuisineGroup">
+          <button type="button" class="cuisine-chip active" data-cuisine="all">🎲 全菜系随机</button>
+          <button type="button" class="cuisine-chip" data-cuisine="家常中菜">🏠 家常中菜</button>
+          <button type="button" class="cuisine-chip" data-cuisine="川渝菜">🌶️ 川渝菜</button>
+          <button type="button" class="cuisine-chip" data-cuisine="粤港澳">🦐 粤港澳</button>
+          <button type="button" class="cuisine-chip" data-cuisine="湘鄂赣">🔥 湘鄂赣</button>
+          <button type="button" class="cuisine-chip" data-cuisine="江浙沪">🦀 江浙沪</button>
+          <button type="button" class="cuisine-chip" data-cuisine="东北鲁菜">🥟 东北鲁菜</button>
+          <button type="button" class="cuisine-chip" data-cuisine="西北晋豫">🍜 西北晋豫</button>
+          <button type="button" class="cuisine-chip" data-cuisine="云贵桂闽">🍲 云贵桂闽</button>
+          <button type="button" class="cuisine-chip" data-cuisine="日韩亚太">🍣 日韩亚太</button>
+          <button type="button" class="cuisine-chip" data-cuisine="欧美西餐">🥩 欧美西餐</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 老虎机滚轮抽选机 -->
+    <section class="slot-machine-section">
+      <div class="slot-frame" id="slotFrame">
+        <div class="slot-lights">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
 
-        <!-- 展台主体滚动区 -->
-        <div class="showcase-body" id="showcaseBody">
-          <!-- 动态填充：待抽选欢迎/周边实店预览 OR 完整图文食谱 OR 抽中实店详情+周边清单 -->
+        <div class="slot-window" id="slotWindow">
+          <div class="slot-fade-top"></div>
+          <div class="slot-speed-lines" id="slotSpeedLines"></div>
+          <div class="slot-center-highlight">
+            <div class="slot-pointer left">▶</div>
+            <div class="slot-pointer right">◀</div>
+          </div>
+          <div class="slot-shockwave" id="slotShockwave"></div>
+          <div class="slot-reel" id="slotReel">
+            <div class="reel-card">
+              <div class="dish-emoji">🎰</div>
+              <div class="dish-name-wrap">
+                <div class="dish-name">准备开抽</div>
+              </div>
+              <div class="dish-badges">
+                <span class="badge badge-cuisine">选好三步条件</span>
+                <span class="badge badge-mode">点击下方按钮</span>
+                <span class="badge badge-flavor">一秒决定</span>
+              </div>
+            </div>
+          </div>
+          <div class="slot-fade-bottom"></div>
         </div>
-      </section>
-    </div>
+      </div>
+
+      <!-- 抽卡主按钮 -->
+      <div class="draw-action-bar">
+        <button type="button" id="btnDraw" class="draw-btn">
+          <span class="draw-btn-shine"></span>
+          <span class="draw-btn-icon">🎰</span>
+          <span class="draw-btn-text">开始抽卡</span>
+        </button>
+      </div>
+
+      <!-- 恒定高度底部操作坞（抽中后点击按钮才弹窗展示详细图文食谱或周边实店，主界面始终极简干净） -->
+      <div class="result-dock" id="resultDock">
+        <div class="dock-layer active" id="dockIdle">
+          <div class="dock-placeholder">
+            <span class="dock-placeholder-icon">✨</span>
+            <span id="dockIdleText">选好条件点击「开始抽卡」，抽中后可点击查看详细图文食谱</span>
+          </div>
+        </div>
+        <div class="dock-layer" id="dockResult">
+          <div id="resultActionContent" class="result-action-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 今日抽卡记录栏 -->
+    <section id="historySection" class="history-section">
+      <div class="history-header">
+        <span class="history-title">今日已抽中</span>
+        <span class="history-hint">点击胶囊可切换回看</span>
+      </div>
+      <div class="history-list" id="historyList">
+        <span class="history-empty">暂无记录 · 抽中的美食会出现在这里</span>
+      </div>
+    </section>
   </main>
 
-  <!-- 本页全屏大字烹饪模式弹窗（无任何外链跳转） -->
+  <!-- 本页详细图文食谱 / 周边实店详情弹窗（点击按钮后在本页弹出，无外部跳转） -->
   <div id="recipeModal" class="modal-backdrop" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
           <span id="modalEmoji" class="modal-emoji">🥘</span>
-          <div>
+          <div class="modal-title-wrap">
             <h2 id="modalDishName" class="modal-title">菜名</h2>
             <div id="modalTags" class="modal-subtags"></div>
           </div>
         </div>
-        <button type="button" id="btnCloseModal" class="modal-close" title="关闭大字视图">✕</button>
+        <button type="button" id="btnCloseModal" class="modal-close" title="关闭弹窗">✕</button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>
@@ -218,7 +214,7 @@
       <div class="modal-header">
         <div class="modal-title-group">
           <span class="modal-emoji">📡</span>
-          <div>
+          <div class="modal-title-wrap">
             <h2 class="modal-title">周边外卖店铺数据源</h2>
             <div class="modal-subtags">
               <span class="badge badge-cuisine" id="sourceStatusBadge">当前：免Key开放实时库</span>

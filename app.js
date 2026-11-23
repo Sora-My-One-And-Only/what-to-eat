@@ -49,6 +49,11 @@
   const slotReel = document.getElementById('slotReel');
   const slotShockwave = document.getElementById('slotShockwave');
   const btnDraw = document.getElementById('btnDraw');
+  const resultDock = document.getElementById('resultDock');
+  const dockIdle = document.getElementById('dockIdle');
+  const dockIdleText = document.getElementById('dockIdleText');
+  const dockResult = document.getElementById('dockResult');
+  const resultActionContent = document.getElementById('resultActionContent');
   const locDot = document.getElementById('locDot');
   const locText = document.getElementById('locText');
   const btnRelocate = document.getElementById('btnRelocate');
@@ -58,13 +63,7 @@
   const historyList = document.getElementById('historyList');
   const fxCanvas = document.getElementById('fxCanvas');
 
-  // 右侧常驻内容展台 DOM
-  const rightShowcasePanel = document.getElementById('rightShowcasePanel');
-  const showcaseTitle = document.getElementById('showcaseTitle');
-  const showcaseActions = document.getElementById('showcaseActions');
-  const showcaseBody = document.getElementById('showcaseBody');
-
-  // 弹窗 DOM
+  // 弹窗 DOM（点击按钮后在本页弹出，绝不跳转外网）
   const recipeModal = document.getElementById('recipeModal');
   const modalEmoji = document.getElementById('modalEmoji');
   const modalDishName = document.getElementById('modalDishName');
@@ -218,7 +217,7 @@
   }
 
   // =========================================================================
-  // 3. 周边真实店铺智能自动菜系分类器
+  // 3. 周边真实店铺智能自动菜系分类器 & 纯静态三层周边扫描引擎
   // =========================================================================
   const shopCuisineClassifier = [
     {
@@ -360,7 +359,6 @@
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   }
 
-  // 直接从浏览器调用高德官方 POI 2.0（支持 CORS，适配 GitHub Pages 纯静态部署）
   async function fetchDirectAmap(lat, lng, radius, amapKey) {
     const shops = [];
     for (let page = 1; page <= 3; page++) {
@@ -395,7 +393,6 @@
     return shops;
   }
 
-  // 直接从浏览器调用开放 Overpass 节点（纯静态部署备用实时扫描）
   async function fetchDirectOverpass(lat, lng, radius) {
     const radiusKm = Math.max(0.5, Math.min(6, radius / 1000));
     const dLat = radiusKm / 111;
@@ -436,21 +433,18 @@
     return shops;
   }
 
-  // 从内置全国十大热门城市实景商户库中按当前坐标与半径过滤（GitHub Pages 0延迟秒出实店）
   function matchStaticCitySnapshot(lat, lng, radius, cityLabel) {
     const citySnapshots = window.CITY_SHOPS_DATA || {};
     const matchedKey = Object.keys(citySnapshots).find(k => cityLabel.includes(k) || cityLabel.includes(k.replace('市', '')));
     if (!matchedKey || !Array.isArray(citySnapshots[matchedKey])) return [];
 
-    const filtered = citySnapshots[matchedKey]
+    return citySnapshots[matchedKey]
       .map(s => ({
         ...s,
         distance: haversineMeters(lat, lng, s.lat, s.lng)
       }))
       .filter(s => s.distance <= radius)
       .sort((a, b) => a.distance - b.distance);
-
-    return filtered;
   }
 
   async function scanNearbyShops(force = false) {
@@ -471,11 +465,9 @@
       let source = 'osm';
 
       if (state.amapKey) {
-        // 优先：用户填写的高德官方 Key，直连高德 API（纯前端跨域可用）
         rawShops = await fetchDirectAmap(state.location.lat, state.location.lng, state.radius, state.amapKey);
         source = 'amap';
       } else if (isLocalhost) {
-        // 本地开发：走本地 Node 代理接口
         const apiUrl = `/api/nearby?lat=${state.location.lat}&lng=${state.location.lng}&radius=${state.radius}`;
         const res = await fetch(apiUrl);
         const data = await res.json();
@@ -484,7 +476,6 @@
           source = data.source || 'osm';
         }
       } else {
-        // GitHub Pages 纯静态托管：优先匹配内置十大城市实时商圈快照（秒开稳定），其余位置直连 Overpass
         const snapshot = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
         if (snapshot.length > 0) {
           rawShops = snapshot;
@@ -506,7 +497,6 @@
         throw new Error('当前范围暂无扫描到实店');
       }
     } catch (err) {
-      // 兜底尝试内置快照（防止外网波动）
       const fallbackSnap = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
       locDot.classList.remove('loading');
       if (fallbackSnap.length > 0) {
@@ -521,13 +511,6 @@
     } finally {
       state.nearbyLoading = false;
       syncUI();
-      if (state.mode === 'takeout') {
-        if (state.currentDish && state.currentDish.isRealShop) {
-          renderRightShowcase(state.currentDish);
-        } else {
-          renderIdleShowcase();
-        }
-      }
     }
   }
 
@@ -606,6 +589,18 @@
     countAnimId = requestAnimationFrame(tick);
   }
 
+  function setDockMode(mode) {
+    if (mode === 'result') {
+      dockIdle.classList.remove('active');
+      dockResult.classList.add('active');
+      resultDock.classList.add('has-result');
+    } else {
+      dockResult.classList.remove('active');
+      dockIdle.classList.add('active');
+      resultDock.classList.remove('has-result');
+    }
+  }
+
   function syncUI() {
     const mealIdxMap = { breakfast: 0, lunch: 1, dinner: 2 };
     mealGroup.style.setProperty('--active-idx', mealIdxMap[state.meal] ?? 0);
@@ -641,7 +636,12 @@
     animatePoolCount(pool.length);
 
     if (!state.currentDish && !state.isSpinning) {
-      renderIdleShowcase();
+      dockIdleText.textContent =
+        state.mode === 'cook'
+          ? '选好条件点击「开始抽卡」，抽中后可点击弹窗查看详细图文食谱'
+          : state.nearbyShops.length > 0
+            ? `已识别周围 ${state.radius / 1000}km 内 ${state.nearbyShops.length} 家实店，点击直接开抽！`
+            : '选好范围与菜系点击「开始抽卡」，抽中后可查看周边实店详情';
     }
   }
 
@@ -761,11 +761,11 @@
     slotFrame.classList.add('spinning');
     slotShockwave.classList.remove('boom');
 
-    showcaseTitle.textContent =
+    dockIdleText.textContent =
       state.mode === 'takeout' && pool[0]?.isRealShop
         ? `🛵 正在周围 ${state.radius / 1000}km 的 ${pool.length} 家真实店铺中抽选...`
-        : '🎰 正在从美食库中为你锁定今日天命美食...';
-    showcaseActions.innerHTML = '';
+        : '🎲 正在从美食库中为你锁定今日天命美食...';
+    setDockMode('idle');
 
     let winner = pool[Math.floor(Math.random() * pool.length)];
     if (pool.length > 1 && state.currentDish && winner.name === state.currentDish.name) {
@@ -826,12 +826,78 @@
       btnDraw.querySelector('.draw-btn-text').textContent = '换一个？再抽一次';
 
       addToHistory(winner);
-      renderRightShowcase(winner);
+      renderResultDock(winner);
     }, durationMs + 40);
   }
 
   // =========================================================================
-  // 7. 分步图文详解构建器（自己做模式）
+  // 7. 抽中后底部极简操作坞（点击按钮才在本页弹出详细图文食谱 / 周边实店弹窗）
+  // =========================================================================
+  function renderResultDock(item) {
+    if (state.mode === 'cook') {
+      resultActionContent.innerHTML = `
+        <div class="action-panel-header">
+          <span>🍳 已抽中「<strong>${item.name}</strong>」</span>
+          <span>${item.time || '约20分钟'} · 共 ${(item.steps || []).length} 步</span>
+        </div>
+        <div class="action-btn-grid">
+          <button type="button" class="action-link-btn primary-action" id="btnOpenRecipeModal">
+            📖 查看详细图文食谱
+          </button>
+          <button type="button" class="action-link-btn" id="btnCopyRecipeQuick">
+            📋 复制食材清单
+          </button>
+        </div>
+      `;
+
+      document.getElementById('btnOpenRecipeModal')?.addEventListener('click', () => openRecipeModal(item));
+      document.getElementById('btnCopyRecipeQuick')?.addEventListener('click', () => copyRecipeToClipboard(item));
+    } else {
+      const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
+      const distBadge = item.isRealShop
+        ? `距你 ${formatDistance(item.distance)} · 约${item.estDeliveryMin}分达`
+        : state.location.label;
+
+      resultActionContent.innerHTML = `
+        <div class="action-panel-header">
+          <span>🏪 已抽中「<strong>${item.name}</strong>」</span>
+          <span>${distBadge}</span>
+        </div>
+        <div class="action-btn-grid cols-3">
+          <button type="button" class="action-link-btn primary-action" id="btnOpenShopModal">
+            🏪 看店铺与周边
+          </button>
+          <button type="button" class="action-link-btn" id="btnCopyShopQuick">
+            📋 复制店名
+          </button>
+          <button type="button" class="action-link-btn" id="btnExpandQuick">
+            🔭 扩至5km
+          </button>
+        </div>
+      `;
+
+      document.getElementById('btnOpenShopModal')?.addEventListener('click', () => openShopModal(item));
+      document.getElementById('btnCopyShopQuick')?.addEventListener('click', () => {
+        playSelectSound();
+        navigator.clipboard
+          .writeText(copyTarget)
+          .then(() => showToast(`✅ 已复制「${copyTarget}」，可去美团/饿了么粘贴下单`))
+          .catch(() => showToast(`✅ 店铺名：${copyTarget}`));
+      });
+      document.getElementById('btnExpandQuick')?.addEventListener('click', () => {
+        playSelectSound();
+        state.radius = 5000;
+        radiusSelect.value = '5000';
+        scanNearbyShops(true);
+        showToast('📡 已扩大范围至 5km 重新扫描周边店铺');
+      });
+    }
+
+    setDockMode('result');
+  }
+
+  // =========================================================================
+  // 8. 详细图文食谱弹窗构建器（仅在用户点击按钮时弹出，且无任何头部挤压截断Bug）
   // =========================================================================
   function analyzeStepVisual(stepText, idx, total) {
     let stage = '烹饪操作';
@@ -1063,25 +1129,11 @@
 
     return `
       <div class="recipe-hero-banner">
-        <div class="recipe-hero-top">
-          <div class="recipe-hero-graphic">
-            <span style="font-size:40px;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.4));">${dish.emoji || '🥘'}</span>
-          </div>
-          <div class="recipe-hero-info">
-            <div class="recipe-hero-title-row">
-              <h2 class="recipe-hero-title">${dish.name}</h2>
-              <div class="dish-badges" style="height:auto;">
-                <span class="badge badge-cuisine">${dish.cuisine}</span>
-                <span class="badge badge-flavor">${dish.tag || '地道美味'}</span>
-              </div>
-            </div>
-            <div class="recipe-meta-pills">
-              <span class="meta-pill">⏱️ ${time}</span>
-              <span class="meta-pill">🔥 难度 ${difficulty}</span>
-              <span class="meta-pill">🛒 食材 ${ings.length} 项</span>
-              <span class="meta-pill">📑 共 ${steps.length} 步</span>
-            </div>
-          </div>
+        <div class="recipe-meta-pills">
+          <span class="meta-pill">⏱️ ${time}</span>
+          <span class="meta-pill">🔥 难度 ${difficulty}</span>
+          <span class="meta-pill">🛒 食材 ${ings.length} 项</span>
+          <span class="meta-pill">📑 共 ${steps.length} 步</span>
         </div>
         ${introHTML}
         ${photoGalleryHTML}
@@ -1141,191 +1193,73 @@
       .catch(() => showToast(`✅ 已生成「${dish.name}」清单`));
   }
 
-  // =========================================================================
-  // 8. 右侧常驻展台渲染引擎（空闲预览 / 自制详细图文食谱 / 外卖周边实店详情+清单）
-  // =========================================================================
-  function bindShopDirectoryClicks(peerShops) {
-    showcaseBody.querySelectorAll('.nearby-shop-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const shop = peerShops[Number(row.dataset.shopIdx)];
-        if (!shop || state.isSpinning) return;
-        playSelectSound();
-        state.currentDish = shop;
-        slotReel.style.transition = 'none';
-        slotReel.style.transform = 'translate3d(0, 0, 0)';
-        slotReel.innerHTML = createReelCardHTML(shop);
-        slotFrame.classList.add('won');
-        renderRightShowcase(shop);
-        addToHistory(shop);
-      });
-    });
-  }
-
-  function renderIdleShowcase() {
-    rightShowcasePanel.classList.remove('has-content');
-
-    if (state.mode === 'takeout') {
-      const peerShops = getFilteredPool().filter(s => s.isRealShop);
-      const radiusKm = (state.radius / 1000).toFixed(0);
-      const cuisineLabel = state.cuisine === 'all' ? '全菜系' : state.cuisine;
-
-      if (peerShops.length > 0) {
-        showcaseTitle.textContent = `🏪 ${state.location.label} ${radiusKm}km 内「${cuisineLabel}」实店 (${peerShops.length} 家)`;
-        showcaseActions.innerHTML = `
-          <button type="button" class="showcase-btn" id="btnIdleExpand">🔭 扩至 5km</button>
-        `;
-        document.getElementById('btnIdleExpand')?.addEventListener('click', () => {
-          playSelectSound();
-          state.radius = 5000;
-          radiusSelect.value = '5000';
-          scanNearbyShops(true);
-        });
-
-        const shopRowsHTML = peerShops
-          .slice(0, 40)
-          .map(
-            (shop, idx) => `
-            <div class="nearby-shop-row" data-shop-idx="${idx}">
-              <div class="nearby-shop-top">
-                <span class="nearby-shop-name">${shop.emoji} ${shop.name}</span>
-                <span class="nearby-shop-dist">${formatDistance(shop.distance)}</span>
-              </div>
-              <div class="nearby-shop-bottom">
-                <span class="nearby-shop-addr">📍 ${shop.address || '周边商圈'}</span>
-                <span class="nearby-shop-tag">${shop.cuisine}</span>
-              </div>
-            </div>
-          `
-          )
-          .join('');
-
-        showcaseBody.innerHTML = `
-          <div class="recipe-block-header" style="margin-bottom:0;">
-            <span class="recipe-block-title">📡 已自动扫描并归类以下周边真实店铺</span>
-            <span class="recipe-block-sub">点击左侧「开始抽卡」随机决定，或直接点选门店</span>
-          </div>
-          <div class="shop-list-grid">${shopRowsHTML}</div>
-        `;
-        bindShopDirectoryClicks(peerShops);
-        return;
-      }
-
-      showcaseTitle.textContent = '🛵 周边外卖实店展台';
-      showcaseActions.innerHTML = '';
-      showcaseBody.innerHTML = `
-        <div class="showcase-empty-state">
-          <div class="showcase-empty-icon">📡</div>
-          <div class="showcase-empty-title">${state.nearbyLoading ? '正在扫描周边真实餐饮店铺...' : '选好范围与菜系，立即开抽'}</div>
-          <div class="showcase-empty-desc">
-            自动识别你周围 1~5km 内的真实餐饮与快餐门店并按菜系归类。<br/>抽中后直接在此展示门店详情与点单推荐，无需跳去外部地图。
-          </div>
-          <div class="showcase-feature-pills">
-            <span class="feature-pill">📍 自动计算直线距离</span>
-            <span class="feature-pill">🏷️ 10大菜系智能归类</span>
-            <span class="feature-pill">📋 一键复制店名下单</span>
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    // 自己做模式的右侧欢迎态
-    showcaseTitle.textContent = '📖 详细图文食谱展台';
-    showcaseActions.innerHTML = '';
-    showcaseBody.innerHTML = `
-      <div class="showcase-empty-state">
-        <div class="showcase-empty-icon">🍳</div>
-        <div class="showcase-empty-title">准备生成今日专属图文食谱</div>
-        <div class="showcase-empty-desc">
-          在左侧选好「餐段 · 自己做 · 菜系」，点击「开始抽卡」。<br/>
-          定格瞬间，此处将直接呈现完整食材精确用量与分步图文做法，全程无需跳转外网。
-        </div>
-        <div class="showcase-feature-pills">
-          <span class="feature-pill">🛒 食材用量可勾选</span>
-          <span class="feature-pill">⚡ 分步SVG图文详解</span>
-          <span class="feature-pill">💡 火候时长高亮提醒</span>
-          <span class="feature-pill">🔍 支持大字厨房模式</span>
-        </div>
-      </div>
+  // 点击「查看详细图文食谱」弹出本页弹窗（无外部跳转）
+  async function openRecipeModal(dish) {
+    playSelectSound();
+    modalEmoji.textContent = dish.emoji || '🥘';
+    modalDishName.textContent = `${dish.name} · 详细图文食谱`;
+    modalTags.innerHTML = `
+      <span class="badge badge-cuisine">${dish.cuisine}</span>
+      <span class="badge badge-flavor">${dish.tag || '地道美味'}</span>
     `;
+
+    modalBody.scrollTop = 0;
+    modalBody.innerHTML = buildIllustratedRecipeHTML(dish);
+    bindRecipeInteractions(modalBody);
+
+    modalFooter.innerHTML = `
+      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 复制完整食材与步骤</button>
+      <button type="button" class="action-link-btn" id="btnModalDone">✅ 关闭食谱弹窗</button>
+    `;
+
+    document.getElementById('btnModalCopy')?.addEventListener('click', () => copyRecipeToClipboard(dish));
+    document.getElementById('btnModalDone')?.addEventListener('click', closeRecipeModal);
+
+    recipeModal.classList.add('open');
+    recipeModal.setAttribute('aria-hidden', 'false');
+
+    // 若关联 HowToCook，后台异步拉取更全图片与原文步骤静默增强
+    if (dish.recipePath && !dish._htcLoaded) {
+      try {
+        const encodedPath = dish.recipePath.split('/').map(encodeURIComponent).join('/');
+        const cdnUrl = `https://cdn.jsdelivr.net/gh/Anduin2017/HowToCook@master/${encodedPath}`;
+        const res = await fetch(cdnUrl);
+        if (res.ok) {
+          const mdText = await res.text();
+          const parsed = parseFullHowToCookMarkdown(mdText, dish.recipePath);
+          if (parsed.ingredients.length >= 2) dish.ingredients = parsed.ingredients;
+          if (parsed.steps.length >= 2) dish.steps = parsed.steps;
+          if (parsed.tips.length >= 1) dish.tips = parsed.tips;
+          if (parsed.intro) dish.intro = parsed.intro;
+          if (parsed.difficulty) dish.difficulty = parsed.difficulty;
+          if (parsed.images.length) {
+            dish.images = Array.from(new Set([...(dish.images || []), ...parsed.images]));
+          }
+          dish._htcLoaded = true;
+          if (recipeModal.classList.contains('open') && state.currentDish?.name === dish.name) {
+            modalBody.innerHTML = buildIllustratedRecipeHTML(dish);
+            bindRecipeInteractions(modalBody);
+          }
+        }
+      } catch (_) {}
+    }
   }
 
-  async function renderRightShowcase(item) {
-    rightShowcasePanel.classList.add('has-content');
-    showcaseBody.scrollTop = 0;
-
-    if (state.mode === 'cook') {
-      showcaseTitle.textContent = `📖 ${item.name} · 详细图文食谱`;
-      showcaseActions.innerHTML = `
-        <button type="button" class="showcase-btn primary" id="btnOpenLargeModal">🔍 全屏大字</button>
-        <button type="button" class="showcase-btn" id="btnCopyIngredients">📋 复制清单</button>
-      `;
-
-      document.getElementById('btnOpenLargeModal')?.addEventListener('click', () => openRecipeModal(item));
-      document.getElementById('btnCopyIngredients')?.addEventListener('click', () => copyRecipeToClipboard(item));
-
-      showcaseBody.innerHTML = buildIllustratedRecipeHTML(item);
-      bindRecipeInteractions(showcaseBody);
-
-      // 若关联 HowToCook，后台异步拉取更全图片与原文步骤静默增强
-      if (item.recipePath && !item._htcLoaded) {
-        try {
-          const encodedPath = item.recipePath.split('/').map(encodeURIComponent).join('/');
-          const cdnUrl = `https://cdn.jsdelivr.net/gh/Anduin2017/HowToCook@master/${encodedPath}`;
-          const res = await fetch(cdnUrl);
-          if (res.ok) {
-            const mdText = await res.text();
-            const parsed = parseFullHowToCookMarkdown(mdText, item.recipePath);
-            if (parsed.ingredients.length >= 2) item.ingredients = parsed.ingredients;
-            if (parsed.steps.length >= 2) item.steps = parsed.steps;
-            if (parsed.tips.length >= 1) item.tips = parsed.tips;
-            if (parsed.intro) item.intro = parsed.intro;
-            if (parsed.difficulty) item.difficulty = parsed.difficulty;
-            if (parsed.images.length) {
-              item.images = Array.from(new Set([...(item.images || []), ...parsed.images]));
-            }
-            item._htcLoaded = true;
-            if (state.currentDish && state.currentDish.name === item.name && state.mode === 'cook') {
-              showcaseBody.innerHTML = buildIllustratedRecipeHTML(item);
-              bindRecipeInteractions(showcaseBody);
-            }
-          }
-        } catch (_) {}
-      }
-      return;
-    }
-
-    // 点外卖模式：右侧展示抽中实店详情 + 周边同菜系店铺清单
+  // 点击「看店铺与周边」弹出本页周边实店详情与同菜系清单弹窗
+  function openShopModal(item) {
+    playSelectSound();
     const peerShops = getFilteredPool().filter(s => s.isRealShop);
     const radiusKm = (state.radius / 1000).toFixed(0);
     const cuisineLabel = state.cuisine === 'all' ? '全菜系' : state.cuisine;
     const srcBadge = state.nearbySource === 'amap' ? '高德官方周边库' : '免Key周边实店库';
     const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
 
-    showcaseTitle.textContent = item.isRealShop
-      ? `🏪 ${item.name} · 距你 ${formatDistance(item.distance)}`
-      : `🛵 ${item.name}`;
-
-    showcaseActions.innerHTML = `
-      <button type="button" class="showcase-btn primary" id="btnCopyShopName">📋 复制店名下单</button>
-      <button type="button" class="showcase-btn" id="btnExpandRadius">🔭 扩至 5km</button>
+    modalEmoji.textContent = item.emoji || '🏪';
+    modalDishName.textContent = item.name;
+    modalTags.innerHTML = `
+      <span class="badge badge-cuisine">${item.cuisine}</span>
+      <span class="badge badge-flavor">${item.isRealShop ? srcBadge : '经典外卖套餐'}</span>
     `;
-
-    document.getElementById('btnCopyShopName')?.addEventListener('click', () => {
-      playSelectSound();
-      navigator.clipboard
-        .writeText(copyTarget)
-        .then(() => showToast(`✅ 已复制「${copyTarget}」，可直接去美团/饿了么粘贴下单`))
-        .catch(() => showToast(`✅ 店铺名：${copyTarget}`));
-    });
-
-    document.getElementById('btnExpandRadius')?.addEventListener('click', () => {
-      playSelectSound();
-      state.radius = 5000;
-      radiusSelect.value = '5000';
-      scanNearbyShops(true);
-      showToast('📡 已扩大范围至 5km 重新扫描周边餐饮店铺');
-    });
 
     const combosHTML = (item.combos || ['门店招牌单人工作套餐', '热门主食+小食/饮品套餐'])
       .map(c => `<span class="combo-suggest-chip">🍽️ ${c}</span>`)
@@ -1334,25 +1268,11 @@
     const heroHTML = item.isRealShop
       ? `
         <div class="recipe-hero-banner">
-          <div class="recipe-hero-top">
-            <div class="recipe-hero-graphic">
-              <span style="font-size:40px;">${item.emoji || '🏪'}</span>
-            </div>
-            <div class="recipe-hero-info">
-              <div class="recipe-hero-title-row">
-                <h2 class="recipe-hero-title">${item.name}</h2>
-                <div class="dish-badges" style="height:auto;">
-                  <span class="badge badge-cuisine">${item.cuisine}</span>
-                  <span class="badge badge-flavor">${srcBadge}</span>
-                </div>
-              </div>
-              <div class="recipe-meta-pills">
-                <span class="meta-pill">📍 距你 ${formatDistance(item.distance)}</span>
-                <span class="meta-pill">🛵 预计 ${item.estDeliveryMin} 分钟送达</span>
-                ${item.rating ? `<span class="meta-pill">⭐ 评分 ${item.rating}</span>` : ''}
-                ${item.cost ? `<span class="meta-pill">💰 人均 ¥${item.cost}</span>` : ''}
-              </div>
-            </div>
+          <div class="recipe-meta-pills">
+            <span class="meta-pill">📍 距你 ${formatDistance(item.distance)}</span>
+            <span class="meta-pill">🛵 预计 ${item.estDeliveryMin} 分钟送达</span>
+            ${item.rating ? `<span class="meta-pill">⭐ 评分 ${item.rating}</span>` : ''}
+            ${item.cost ? `<span class="meta-pill">💰 人均 ¥${item.cost}</span>` : ''}
           </div>
           <div class="recipe-intro-text">
             📍 门店位置：<strong>${item.address || `${state.location.label} ${radiusKm}km 商圈内`}</strong>
@@ -1361,7 +1281,6 @@
           <div>
             <div class="recipe-block-header" style="margin-bottom:6px;">
               <span class="recipe-block-title">🍱 进店外卖必点参考</span>
-              <span class="recipe-block-sub">复制店名后在美团/饿了么直接搜店下单</span>
             </div>
             <div class="combo-suggest-chips">${combosHTML}</div>
           </div>
@@ -1369,18 +1288,9 @@
       `
       : `
         <div class="recipe-hero-banner">
-          <div class="recipe-hero-top">
-            <div class="recipe-hero-graphic"><span style="font-size:40px;">${item.emoji || '🛵'}</span></div>
-            <div class="recipe-hero-info">
-              <div class="recipe-hero-title-row">
-                <h2 class="recipe-hero-title">${item.name}</h2>
-                <span class="badge badge-cuisine">${item.cuisine}</span>
-              </div>
-              <div class="recipe-meta-pills">
-                <span class="meta-pill">📍 ${state.location.label} ${radiusKm}km 内暂未发现该细分菜系实店</span>
-                <span class="meta-pill">💡 点击右上角可扩至 5km</span>
-              </div>
-            </div>
+          <div class="recipe-meta-pills">
+            <span class="meta-pill">📍 ${state.location.label} ${radiusKm}km 内暂未扫到该细分菜系实店</span>
+            <span class="meta-pill">💡 可切换至 5km 或点击 ⚙️ 配置高德 Key</span>
           </div>
         </div>
       `;
@@ -1409,39 +1319,43 @@
         <div>
           <div class="recipe-block-header">
             <span class="recipe-block-title">🏪 周围 ${radiusKm}km 内「${cuisineLabel}」真实店铺（共 ${peerShops.length} 家）</span>
-            <span class="recipe-block-sub">按距离排序 · 点击任意门店可切换</span>
+            <span class="recipe-block-sub">按距离排序 · 点击可切换</span>
           </div>
           <div class="shop-list-grid">${shopRowsHTML}</div>
         </div>
       `
         : '';
 
-    showcaseBody.innerHTML = heroHTML + directoryHTML;
-    bindShopDirectoryClicks(peerShops);
-  }
+    modalBody.scrollTop = 0;
+    modalBody.innerHTML = heroHTML + directoryHTML;
 
-  // =========================================================================
-  // 9. 全屏大字模式弹窗 & 数据源设置弹窗
-  // =========================================================================
-  function openRecipeModal(dish) {
-    playSelectSound();
-    modalEmoji.textContent = dish.emoji || '🥘';
-    modalDishName.textContent = `${dish.name} · 大字图文食谱`;
-    modalTags.innerHTML = `
-      <span class="badge badge-cuisine">${dish.cuisine}</span>
-      <span class="badge badge-flavor">${dish.tag || '家常美味'}</span>
-    `;
-
-    modalBody.innerHTML = buildIllustratedRecipeHTML(dish);
-    bindRecipeInteractions(modalBody);
+    modalBody.querySelectorAll('.nearby-shop-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const shop = peerShops[Number(row.dataset.shopIdx)];
+        if (!shop) return;
+        state.currentDish = shop;
+        slotReel.style.transition = 'none';
+        slotReel.style.transform = 'translate3d(0, 0, 0)';
+        slotReel.innerHTML = createReelCardHTML(shop);
+        renderResultDock(shop);
+        addToHistory(shop);
+        openShopModal(shop);
+      });
+    });
 
     modalFooter.innerHTML = `
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 复制完整食材与步骤</button>
-      <button type="button" class="action-link-btn" id="btnModalDone">✅ 关闭大字视图</button>
+      <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 复制店名去美团/饿了么下单</button>
+      <button type="button" class="action-link-btn" id="btnModalDoneShop">✅ 关闭窗口</button>
     `;
 
-    document.getElementById('btnModalCopy')?.addEventListener('click', () => copyRecipeToClipboard(dish));
-    document.getElementById('btnModalDone')?.addEventListener('click', closeRecipeModal);
+    document.getElementById('btnModalCopyShop')?.addEventListener('click', () => {
+      playSelectSound();
+      navigator.clipboard
+        .writeText(copyTarget)
+        .then(() => showToast(`✅ 已复制「${copyTarget}」，可直接去外卖软件搜索下单`))
+        .catch(() => showToast(`✅ 店铺名：${copyTarget}`));
+    });
+    document.getElementById('btnModalDoneShop')?.addEventListener('click', closeRecipeModal);
 
     recipeModal.classList.add('open');
     recipeModal.setAttribute('aria-hidden', 'false');
@@ -1468,7 +1382,7 @@
   }
 
   // =========================================================================
-  // 10. 历史记录胶囊与事件监听
+  // 9. 历史记录胶囊与事件监听
   // =========================================================================
   function addToHistory(item) {
     state.history = [
@@ -1509,13 +1423,12 @@
         slotReel.style.transform = 'translate3d(0, 0, 0)';
         slotReel.innerHTML = createReelCardHTML(item.dish);
         slotFrame.classList.add('won');
-        renderRightShowcase(item.dish);
+        renderResultDock(item.dish);
         renderHistoryList();
       });
     });
   }
 
-  // 事件绑定
   mealGroup.addEventListener('click', e => {
     const btn = e.target.closest('.segment-btn');
     if (!btn || state.isSpinning) return;
@@ -1534,6 +1447,7 @@
       state.mode = btn.dataset.mode;
       state.currentDish = null;
       slotFrame.classList.remove('won');
+      setDockMode('idle');
 
       const hintText = state.mode === 'cook' ? '准备抽取今日食谱' : '准备抽取周边外卖店铺';
       slotReel.style.transition = 'none';
@@ -1546,7 +1460,7 @@
           </div>
           <div class="dish-badges">
             <span class="badge badge-cuisine">${state.cuisine === 'all' ? '全菜系随机' : state.cuisine}</span>
-            <span class="badge badge-mode">${state.mode === 'cook' ? '右侧展示图文食谱' : '自动识别周边实店'}</span>
+            <span class="badge badge-mode">${state.mode === 'cook' ? '抽中点开图文食谱' : '自动识别周边实店'}</span>
             <span class="badge badge-flavor">点击下方抽卡</span>
           </div>
         </div>
@@ -1563,10 +1477,6 @@
       playSelectSound();
       state.cuisine = btn.dataset.cuisine;
       syncUI();
-      if (state.mode === 'takeout') {
-        if (state.currentDish) renderRightShowcase(state.currentDish);
-        else renderIdleShowcase();
-      }
     }
   });
 
