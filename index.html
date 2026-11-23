@@ -25,7 +25,16 @@
           <span class="status-icon-badge">🍳</span>
           <span class="loc-text-ellipsis">家庭厨房模式 · 本地商超食材可做</span>
         </div>
-        <div class="status-right-tag">抽中可点开详细图文食谱</div>
+        <div class="status-right-tag">含本土食材平替 & 图文食谱</div>
+      </div>
+
+      <!-- 懒人专区状态层 -->
+      <div id="lazyStatusLayer" class="status-layer">
+        <div class="loc-left">
+          <span class="status-icon-badge">⚡</span>
+          <span class="loc-text-ellipsis">懒人专区 · 电饭煲 / 空气炸锅 / 微波炉 / 10分钟快手</span>
+        </div>
+        <div class="status-right-tag">一锅出 · 少洗碗</div>
       </div>
 
       <!-- 点外卖状态层 -->
@@ -82,25 +91,28 @@
           </div>
         </div>
 
-        <!-- STEP 2: 自己做 / 外卖 -->
+        <!-- STEP 2: 自己做 / 懒人专区 / 外卖 -->
         <div class="step-card">
           <div class="step-label">
             <span class="step-num">2</span>
             <span class="step-name">就餐方式</span>
           </div>
-          <div class="segmented-control cols-2" id="modeGroup" style="--active-idx: 0;">
+          <div class="segmented-control cols-3" id="modeGroup" style="--active-idx: 0;">
             <div class="segment-glider"></div>
             <button type="button" class="segment-btn active" data-mode="cook" data-idx="0">
               <span class="pill-icon">🍳</span><span>自己做</span>
             </button>
-            <button type="button" class="segment-btn" data-mode="takeout" data-idx="1">
+            <button type="button" class="segment-btn" data-mode="lazy" data-idx="1">
+              <span class="pill-icon">⚡</span><span>懒人</span>
+            </button>
+            <button type="button" class="segment-btn" data-mode="takeout" data-idx="2">
               <span class="pill-icon">🛵</span><span>点外卖</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- STEP 3: 3×4 完美对称菜系网格 -->
+      <!-- STEP 3: 3×4 完美对称菜系网格（全随机 + AI精选 + 10大菜系 = 12格） -->
       <div class="step-card">
         <div class="step-label">
           <span class="step-num">3</span>
@@ -109,6 +121,7 @@
         </div>
         <div class="cuisine-grid" id="cuisineGroup">
           <button type="button" class="cuisine-chip active" data-cuisine="all">🎲 全菜系随机</button>
+          <button type="button" class="cuisine-chip ai-pick-chip" data-cuisine="AI精选">✨ AI精选</button>
           <button type="button" class="cuisine-chip" data-cuisine="家常中菜">🏠 家常中菜</button>
           <button type="button" class="cuisine-chip" data-cuisine="川渝菜">🌶️ 川渝菜</button>
           <button type="button" class="cuisine-chip" data-cuisine="粤港澳">🦐 粤港澳</button>
@@ -240,6 +253,7 @@
   </div>
 
   <script src="dishes_data.js"></script>
+  <script src="ai_curated_data.js"></script>
   <script src="city_shops_data.js"></script>
   <script src="app.js"></script>
 </body>

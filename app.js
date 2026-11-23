@@ -1,12 +1,43 @@
 (function () {
-  const staticDishes = window.DISHES_DATA || [];
+  const aiCuratedDishes = window.AI_CURATED_DATA || [];
+  const localSubstitutions = window.LOCAL_SUBSTITUTIONS || [];
+
+  // 合并 AI精选菜谱库 + 开源菜谱/外卖套餐库，并自动识别归类“懒人专区”菜品
+  const lazyPattern = /(电饭煲|空气炸锅|微波炉|懒人|快手|泡面|方便面|拌面|汤面|蛋炒饭|炒饭|盖饭|丼|饭团|三明治|吐司|贝果|燕麦|蒸蛋|鸡蛋羹|荷包蛋|太阳蛋|煎蛋|炒蛋|手抓饼|煎饼|速冻|水饺|馄饨|抄手|凉拌|焖饭|一锅|葱油拌面|番茄炒蛋|西红柿炒鸡蛋|煮面|酸辣粉|螺蛳粉)/;
+  function detectLazyTool(d) {
+    if (d.lazyTool) return d.lazyTool;
+    if (d.name.includes('电饭煲') || d.name.includes('焖饭') || d.name.includes('煲仔饭')) return '🍚 电饭煲一锅出';
+    if (d.name.includes('空气炸锅') || d.name.includes('烤')) return '🍟 空气炸锅免看火';
+    if (d.name.includes('微波炉')) return '📻 微波炉快手';
+    if (/(凉拌|沙拉|三明治|吐司|燕麦|饭团)/.test(d.name)) return '🥗 免开火快手';
+    return '⚡ 10~15分钟一锅出';
+  }
+
+  const aiNames = new Set(aiCuratedDishes.map(d => d.name));
+  const mergedBase = (window.DISHES_DATA || [])
+    .filter(d => !aiNames.has(d.name))
+    .map(d => {
+      if (d.modes && d.modes.includes('cook')) {
+        const isLazy = lazyPattern.test(d.name) || (d.steps && d.steps.length <= 4);
+        if (isLazy) {
+          return {
+            ...d,
+            modes: Array.from(new Set([...d.modes, 'lazy'])),
+            lazyTool: detectLazyTool(d)
+          };
+        }
+      }
+      return d;
+    });
+
+  const staticDishes = [...aiCuratedDishes, ...mergedBase];
   const CARD_HEIGHT = 196;
 
   // 当前三步状态 + 周边实店扫描状态
   const state = {
     meal: 'breakfast',   // 'breakfast' | 'lunch' | 'dinner'
-    mode: 'cook',        // 'cook' | 'takeout'
-    cuisine: 'all',      // 'all' or specific cuisine name
+    mode: 'cook',        // 'cook' | 'lazy' | 'takeout'
+    cuisine: 'all',      // 'all' | 'AI精选' | specific cuisine name
     radius: 3000,        // 1000 | 3000 | 5000 (meters)
     amapKey: localStorage.getItem('food_rec_amap_key') || '',
     isSpinning: false,
@@ -43,6 +74,7 @@
   const cuisineGroup = document.getElementById('cuisineGroup');
   const poolCountEl = document.getElementById('poolCount');
   const cookStatusLayer = document.getElementById('cookStatusLayer');
+  const lazyStatusLayer = document.getElementById('lazyStatusLayer');
   const takeoutStatusLayer = document.getElementById('takeoutStatusLayer');
   const slotFrame = document.getElementById('slotFrame');
   const slotWindow = document.getElementById('slotWindow');
@@ -517,8 +549,17 @@
   // =========================================================================
   // 4. 候选池计算 & 菜系角标 & 数字滚动
   // =========================================================================
+  // 精选高口碑周边品牌/老字号匹配规则（点外卖+AI精选时优先筛选周边优质实店）
+  const aiTopShopRegex = /(大壶春|德兴馆|小南国|鼎泰丰|费大厨|太二|海底捞|点都德|陶陶居|外婆家|新白鹿|小杨生煎|老乡鸡|乡村基|喜家德|西贝|陈香贵|马记永|吉野家|食其家|味千|蓝蛙|Wagas|萨莉亚|必胜客|汉堡王|麦当劳|肯德基|全聚德|燕云楼|蔡林记|方中山|老字号|旗舰店|招牌|烧烤|火锅|川菜|粤菜|茶餐厅|拉面|寿司|生煎|小笼)/i;
+
   function getFilteredPool() {
     if (state.mode === 'takeout' && state.nearbyShops.length > 0) {
+      if (state.cuisine === 'AI精选') {
+        const aiShops = state.nearbyShops.filter(s => s.meals.includes(state.meal) && (aiTopShopRegex.test(s.name) || (s.rating && parseFloat(s.rating) >= 4.2)));
+        if (aiShops.length > 0) return aiShops;
+        return state.nearbyShops.slice(0, 20);
+      }
+
       const realMatches = state.nearbyShops.filter(s => {
         const mealMatch = s.meals.includes(state.meal);
         const cuisineMatch = state.cuisine === 'all' || s.cuisine === state.cuisine;
@@ -529,10 +570,18 @@
       if (relaxedReal.length > 0) return relaxedReal;
     }
 
+    // 自己做 / 懒人专区 / 无实店外卖兜底
+    if (state.cuisine === 'AI精选') {
+      const exactAi = staticDishes.filter(d => d.aiPick && d.meals.includes(state.meal) && d.modes.includes(state.mode));
+      if (exactAi.length > 0) return exactAi;
+      const relaxedAi = staticDishes.filter(d => d.aiPick && d.modes.includes(state.mode));
+      if (relaxedAi.length > 0) return relaxedAi;
+    }
+
     return staticDishes.filter(d => {
       const mealMatch = d.meals.includes(state.meal);
       const modeMatch = d.modes.includes(state.mode);
-      const cuisineMatch = state.cuisine === 'all' || d.cuisine === state.cuisine;
+      const cuisineMatch = state.cuisine === 'all' || state.cuisine === 'AI精选' || d.cuisine === state.cuisine;
       return mealMatch && modeMatch && cuisineMatch;
     });
   }
@@ -543,9 +592,10 @@
       const c = btn.dataset.cuisine;
       const baseLabel = cuisineBaseLabels.get(c) || btn.textContent;
       if (showRealCounts) {
-        const cnt = c === 'all'
-          ? state.nearbyShops.length
-          : state.nearbyShops.filter(s => s.cuisine === c).length;
+        let cnt = 0;
+        if (c === 'all') cnt = state.nearbyShops.length;
+        else if (c === 'AI精选') cnt = state.nearbyShops.filter(s => aiTopShopRegex.test(s.name) || (s.rating && parseFloat(s.rating) >= 4.2)).length || Math.min(20, state.nearbyShops.length);
+        else cnt = state.nearbyShops.filter(s => s.cuisine === c).length;
         btn.innerHTML = `${baseLabel}<span class="cuisine-chip-count">(${cnt})</span>`;
       } else {
         btn.textContent = baseLabel;
@@ -608,7 +658,7 @@
       btn.classList.toggle('active', btn.dataset.meal === state.meal);
     });
 
-    const modeIdxMap = { cook: 0, takeout: 1 };
+    const modeIdxMap = { cook: 0, lazy: 1, takeout: 2 };
     modeGroup.style.setProperty('--active-idx', modeIdxMap[state.mode] ?? 0);
     modeGroup.querySelectorAll('.segment-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === state.mode);
@@ -618,17 +668,16 @@
       btn.classList.toggle('active', btn.dataset.cuisine === state.cuisine);
     });
 
+    cookStatusLayer.classList.toggle('active', state.mode === 'cook');
+    lazyStatusLayer.classList.toggle('active', state.mode === 'lazy');
+    takeoutStatusLayer.classList.toggle('active', state.mode === 'takeout');
+
     if (state.mode === 'takeout') {
-      cookStatusLayer.classList.remove('active');
-      takeoutStatusLayer.classList.add('active');
       if (!state.location.ready) {
         detectUserLocation();
       } else if (!state.nearbyLoading && state.nearbyShops.length === 0) {
         scanNearbyShops();
       }
-    } else {
-      takeoutStatusLayer.classList.remove('active');
-      cookStatusLayer.classList.add('active');
     }
 
     updateCuisineChipCounts();
@@ -636,12 +685,16 @@
     animatePoolCount(pool.length);
 
     if (!state.currentDish && !state.isSpinning) {
-      dockIdleText.textContent =
-        state.mode === 'cook'
-          ? '选好条件点击「开始抽卡」，抽中后可点击弹窗查看详细图文食谱'
-          : state.nearbyShops.length > 0
+      if (state.mode === 'cook') {
+        dockIdleText.textContent = '选好条件点击「开始抽卡」，抽中后可弹窗看图文食谱与本土平替';
+      } else if (state.mode === 'lazy') {
+        dockIdleText.textContent = '⚡ 懒人专区已就绪（电饭煲/空气炸锅/10分钟快手），点击开抽！';
+      } else {
+        dockIdleText.textContent =
+          state.nearbyShops.length > 0
             ? `已识别周围 ${state.radius / 1000}km 内 ${state.nearbyShops.length} 家实店，点击直接开抽！`
             : '选好范围与菜系点击「开始抽卡」，抽中后可查看周边实店详情';
+      }
     }
   }
 
@@ -731,7 +784,17 @@
     }
 
     const isTakeout = item.modes.includes('takeout') && !item.modes.includes('cook');
-    const modeLabel = isTakeout ? '🛵 外卖套餐' : '🍳 自己做';
+    let modeLabel = '🍳 自己做';
+    let modeBadgeClass = 'badge badge-mode';
+    if (isTakeout) {
+      modeLabel = '🛵 外卖套餐';
+    } else if (state.mode === 'lazy') {
+      modeLabel = item.lazyTool ? item.lazyTool.split(' · ')[0] : '⚡ 懒人快手';
+      modeBadgeClass = 'badge badge-lazy-tool';
+    } else if (item.aiPick) {
+      modeLabel = '✨ AI精选';
+      modeBadgeClass = 'badge badge-lazy-tool';
+    }
     return `
       <div class="reel-card">
         <div class="dish-emoji">${item.emoji || '🥘'}</div>
@@ -740,7 +803,7 @@
         </div>
         <div class="dish-badges">
           <span class="badge badge-cuisine">${item.cuisine}</span>
-          <span class="badge badge-mode">${modeLabel}</span>
+          <span class="${modeBadgeClass}">${modeLabel}</span>
           <span class="badge badge-flavor">${item.tag || '地道美味'}</span>
         </div>
       </div>
@@ -834,15 +897,18 @@
   // 7. 抽中后底部极简操作坞（点击按钮才在本页弹出详细图文食谱 / 周边实店弹窗）
   // =========================================================================
   function renderResultDock(item) {
-    if (state.mode === 'cook') {
+    if (state.mode === 'cook' || state.mode === 'lazy') {
+      const modeIcon = state.mode === 'lazy' ? '⚡' : '🍳';
+      const matchedSubs = getDishSubstitutions(item.ingredients || []);
+      const subBadgeText = matchedSubs.length > 0 ? ` · 含 ${matchedSubs.length} 项平替` : '';
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
-          <span>🍳 已抽中「<strong>${item.name}</strong>」</span>
-          <span>${item.time || '约20分钟'} · 共 ${(item.steps || []).length} 步</span>
+          <span>${modeIcon} 已抽中「<strong>${item.name}</strong>」</span>
+          <span>${item.time || '约15分钟'} · 共 ${(item.steps || []).length} 步${subBadgeText}</span>
         </div>
         <div class="action-btn-grid">
           <button type="button" class="action-link-btn primary-action" id="btnOpenRecipeModal">
-            📖 查看详细图文食谱
+            📖 查看图文食谱 & 平替
           </button>
           <button type="button" class="action-link-btn" id="btnCopyRecipeQuick">
             📋 复制食材清单
@@ -1045,6 +1111,24 @@
     };
   }
 
+  // 自动匹配该菜品所有可平替的中国本土食材/调料方案
+  function getDishSubstitutions(ings) {
+    const matched = [];
+    const seenLabels = new Set();
+    const fullIngText = (ings || []).join(' ');
+    for (const rule of localSubstitutions) {
+      if (rule.match.test(fullIngText) && !seenLabels.has(rule.label)) {
+        seenLabels.add(rule.label);
+        matched.push(rule);
+      }
+    }
+    return matched;
+  }
+
+  function hasIngredientSub(rawIng) {
+    return localSubstitutions.some(rule => rule.match.test(rawIng));
+  }
+
   function buildIllustratedRecipeHTML(dish) {
     const ings = dish.ingredients || [];
     const steps = dish.steps || [];
@@ -1052,6 +1136,7 @@
     const images = dish.images || [];
     const time = dish.time || '约 20 分钟';
     const difficulty = dish.difficulty || '★★★☆☆ 家常易做';
+    const matchedSubs = getDishSubstitutions(ings);
 
     const photoGalleryHTML =
       images.length > 0
@@ -1077,17 +1162,44 @@
     const ingredientsGridHTML = ings
       .map(rawIng => {
         const { name, amount } = splitIngredientAndAmount(rawIng);
+        const subMark = hasIngredientSub(rawIng) ? `<span class="ing-sub-dot" title="下方有本土平替方案">可平替</span>` : '';
         return `
         <div class="ing-check-item" role="button" tabindex="0">
           <div class="ing-check-left">
             <span class="ing-checkbox">✓</span>
             <span class="ing-name">${name}</span>
+            ${subMark}
           </div>
           <span class="ing-amount">${amount}</span>
         </div>
       `;
       })
       .join('');
+
+    const subGuideHTML =
+      matchedSubs.length > 0
+        ? `
+        <div class="sub-guide-box">
+          <div class="recipe-block-header" style="margin-bottom:8px;">
+            <span class="recipe-block-title" style="color:#7dd3fc;">🔄 本土食材平替指南（缺料不用专门买）</span>
+            <span class="recipe-block-sub">自动匹配 ${matchedSubs.length} 项家用平替</span>
+          </div>
+          <div class="sub-guide-list">
+            ${matchedSubs
+              .map(
+                s => `
+              <div class="sub-guide-row">
+                <span class="sub-orig-tag">${s.label}</span>
+                <span class="sub-arrow">→</span>
+                <span class="sub-alt-text">${s.sub}</span>
+              </div>
+            `
+              )
+              .join('')}
+          </div>
+        </div>
+      `
+        : '';
 
     const stepsListHTML = steps
       .map((stepText, idx) => {
@@ -1130,6 +1242,8 @@
     return `
       <div class="recipe-hero-banner">
         <div class="recipe-meta-pills">
+          ${dish.aiPick ? `<span class="meta-pill" style="border-color:rgba(251,191,36,0.5);color:#fde68a;">✨ AI精选零翻车</span>` : ''}
+          ${dish.lazyTool ? `<span class="meta-pill" style="border-color:rgba(192,132,252,0.5);color:#e9d5ff;">${dish.lazyTool}</span>` : ''}
           <span class="meta-pill">⏱️ ${time}</span>
           <span class="meta-pill">🔥 难度 ${difficulty}</span>
           <span class="meta-pill">🛒 食材 ${ings.length} 项</span>
@@ -1146,6 +1260,8 @@
         </div>
         <div class="ing-checklist-grid">${ingredientsGridHTML}</div>
       </div>
+
+      ${subGuideHTML}
 
       <div>
         <div class="recipe-block-header">
@@ -1449,18 +1565,23 @@
       slotFrame.classList.remove('won');
       setDockMode('idle');
 
-      const hintText = state.mode === 'cook' ? '准备抽取今日食谱' : '准备抽取周边外卖店铺';
+      const hintMap = {
+        cook: { emoji: '🍳', title: '准备抽取今日食谱', mode: '含本土食材平替' },
+        lazy: { emoji: '⚡', title: '准备抽取懒人快手菜', mode: '电饭煲/炸锅/10分钟' },
+        takeout: { emoji: '🛵', title: '准备抽取周边外卖店铺', mode: '自动识别周边实店' }
+      };
+      const hint = hintMap[state.mode] || hintMap.cook;
       slotReel.style.transition = 'none';
       slotReel.style.transform = 'translate3d(0, 0, 0)';
       slotReel.innerHTML = `
         <div class="reel-card">
-          <div class="dish-emoji">${state.mode === 'cook' ? '🍳' : '🛵'}</div>
+          <div class="dish-emoji">${hint.emoji}</div>
           <div class="dish-name-wrap">
-            <div class="dish-name">${hintText}</div>
+            <div class="dish-name">${hint.title}</div>
           </div>
           <div class="dish-badges">
             <span class="badge badge-cuisine">${state.cuisine === 'all' ? '全菜系随机' : state.cuisine}</span>
-            <span class="badge badge-mode">${state.mode === 'cook' ? '抽中点开图文食谱' : '自动识别周边实店'}</span>
+            <span class="badge badge-mode">${hint.mode}</span>
             <span class="badge badge-flavor">点击下方抽卡</span>
           </div>
         </div>
