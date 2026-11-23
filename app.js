@@ -1936,23 +1936,23 @@
 
     // 2. 基础调味品（精确到克 / 毫升 + 家用餐勺：1小勺≈5g/5ml，1大勺≈15ml）
     if (/(^盐$|食盐|精盐|海盐|细盐|岩盐|椒盐)/.test(n)) {
-      if (n.includes('椒盐')) return '3克 (约半小勺)';
+      if (n.includes('椒盐')) return '3克 (约1/2小勺)';
       if (isLittle) return '1.5克 (约1/3小勺)';
-      return isSoup ? '4克 (约半小勺)' : '3克 (约半小勺)';
+      return isSoup ? '4克 (约3/4小勺)' : '3克 (约1/2小勺)';
     }
     if (/(鸡精|味精|鸡粉|松鲜鲜|蘑菇精|蔬之鲜)/.test(n)) return '2克 (约1/3小勺)';
     if (/(冰糖)/.test(n)) return isSweetSour ? '20克 (约8颗)' : '10克 (约4颗)';
     if (/(白糖|绵白糖|细砂糖|红糖|砂糖|代糖|^糖$)/.test(n)) {
       if (isSweetSour) return '15克 (1大勺)';
-      return isLittle ? '3克 (约半小勺)' : '5克 (1小勺)';
+      return isLittle ? '3克 (约1/2小勺)' : '5克 (1小勺)';
     }
-    if (/(老抽)/.test(n)) return isLittle ? '3ml (约半小勺)' : '5ml (1小勺)';
+    if (/(老抽)/.test(n)) return isLittle ? '3ml (约1/2小勺)' : '5ml (1小勺)';
     if (/(生抽|酱油|味极鲜|蒸鱼豉油|薄盐酱油|一品鲜)/.test(n)) {
-      return isLittle ? '8ml (半大勺)' : '15ml (1大勺)';
+      return isLittle ? '8ml (1/2大勺)' : '15ml (1大勺)';
     }
-    if (/(蚝油|耗油)/.test(n)) return isLittle ? '8克 (半大勺)' : '15克 (1大勺)';
+    if (/(蚝油|耗油)/.test(n)) return isLittle ? '8克 (1/2大勺)' : '15克 (1大勺)';
     if (/(料酒|黄酒|花雕|米酒|清酒|味淋|味霖)/.test(n)) {
-      return isLittle ? '8ml (半大勺)' : '15ml (1大勺)';
+      return isLittle ? '8ml (1/2大勺)' : '15ml (1大勺)';
     }
     if (/(醋|陈醋|米醋|香醋|白醋|果醋)/.test(n)) {
       if (isSourSpicy) return '25ml (约2大勺)';
