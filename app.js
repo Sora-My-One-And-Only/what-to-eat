@@ -91,7 +91,6 @@
   const btnRelocate = document.getElementById('btnRelocate');
   const btnSourceConfig = document.getElementById('btnSourceConfig');
   const radiusSelect = document.getElementById('radiusSelect');
-  const cityPreset = document.getElementById('cityPreset');
   const historyList = document.getElementById('historyList');
   const fxCanvas = document.getElementById('fxCanvas');
 
@@ -676,9 +675,7 @@
     takeoutStatusLayer.classList.toggle('active', state.mode === 'takeout');
 
     if (state.mode === 'takeout') {
-      if (!state.location.ready) {
-        detectUserLocation();
-      } else if (!state.nearbyLoading && state.nearbyShops.length === 0) {
+      if (state.location.ready && !state.nearbyLoading && state.nearbyShops.length === 0 && !state.nearbyScannedKey) {
         scanNearbyShops();
       }
     }
@@ -692,72 +689,90 @@
         dockIdleText.textContent = '选好条件点击「开始抽卡」，抽中后可弹窗看图文食谱与本土平替';
       } else if (state.mode === 'lazy') {
         dockIdleText.textContent = '⚡ 懒人专区已就绪（电饭煲/空气炸锅/10分钟快手），点击开抽！';
+      } else if (!state.location.ready) {
+        dockIdleText.textContent = '📍 请先允许浏览器位置授权，以识别你周边范围内的真实外卖店铺';
       } else {
         dockIdleText.textContent =
           state.nearbyShops.length > 0
             ? `已识别周围 ${state.radius / 1000}km 内 ${state.nearbyShops.length} 家实店，点击直接开抽！`
-            : '选好范围与菜系点击「开始抽卡」，抽中后可查看周边实店详情';
+            : '已定位，点击「开始抽卡」抽取今日外卖';
       }
     }
   }
 
   // =========================================================================
-  // 5. 地理位置定位
+  // 5. 纯浏览器授权地理位置定位（无任何默认城市预设，严格向浏览器请求定位授权）
   // =========================================================================
   async function reverseGeocode(lat, lng) {
-    const url =
-      lat && lng
-        ? `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=zh`
-        : `https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=zh`;
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=zh`;
     const res = await fetch(url);
     return res.json();
   }
 
-  async function detectUserLocation() {
-    locDot.classList.add('loading');
-    locText.textContent = '正在定位并扫描周边店铺...';
-
-    const applyGeoData = (data, fallbackLat, fallbackLng) => {
-      const city = data.city || data.principalSubdivision || '上海市';
-      const district = data.locality || '';
-      state.location.lat = fallbackLat || data.latitude || 31.2304;
-      state.location.lng = fallbackLng || data.longitude || 121.4737;
-      state.location.city = city;
-      state.location.district = district;
-      state.location.label = [city, district].filter(Boolean).join('·') || '当前位置';
-      state.location.ready = true;
-      scanNearbyShops(true);
-    };
-
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async pos => {
-          try {
-            const { latitude, longitude } = pos.coords;
-            const data = await reverseGeocode(latitude, longitude);
-            applyGeoData(data, latitude, longitude);
-          } catch (_) {
-            applyGeoData({ city: '当前位置', locality: '周边' }, pos.coords.latitude, pos.coords.longitude);
-          }
-        },
-        async () => {
-          try {
-            const data = await reverseGeocode(null, null);
-            applyGeoData(data, data.latitude, data.longitude);
-          } catch (_) {
-            applyGeoData({ city: '上海市', locality: '人民广场' }, 31.2304, 121.4737);
-          }
-        },
-        { timeout: 4000 }
-      );
-    } else {
-      try {
-        const data = await reverseGeocode(null, null);
-        applyGeoData(data, data.latitude, data.longitude);
-      } catch (_) {
-        applyGeoData({ city: '上海市', locality: '人民广场' }, 31.2304, 121.4737);
-      }
+  function requestBrowserLocation(onAuthorized) {
+    if (!('geolocation' in navigator)) {
+      locDot.classList.remove('loading');
+      locDot.classList.add('error');
+      locText.textContent = '当前浏览器不支持地理定位 API';
+      showToast('⚠️ 当前浏览器不支持地理定位');
+      return;
     }
+
+    locDot.classList.remove('error');
+    locDot.classList.add('loading');
+    locText.textContent = '正在向浏览器请求位置授权...';
+
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude, longitude } = pos.coords;
+        state.location.lat = latitude;
+        state.location.lng = longitude;
+        state.location.ready = true;
+        btnRelocate.textContent = '📍 重新定位';
+        btnRelocate.classList.remove('loc-auth-btn');
+
+        try {
+          const data = await reverseGeocode(latitude, longitude);
+          const city = data.city || data.principalSubdivision || '';
+          const district = data.locality || '';
+          state.location.city = city;
+          state.location.district = district;
+          state.location.label = [city, district].filter(Boolean).join('·') || `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+        } catch (_) {
+          state.location.city = '';
+          state.location.district = '';
+          state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+        }
+
+        await scanNearbyShops(true);
+        if (typeof onAuthorized === 'function') onAuthorized();
+      },
+      err => {
+        state.location.ready = false;
+        state.nearbyShops = [];
+        locDot.classList.remove('loading');
+        locDot.classList.add('error');
+        btnRelocate.textContent = '📍 授权定位';
+        btnRelocate.classList.add('loc-auth-btn');
+
+        if (err && err.code === 1) {
+          locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
+          showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧锁头图标开启定位后重试');
+        } else if (err && err.code === 3) {
+          locText.textContent = '浏览器定位超时 · 请点击「授权定位」重试';
+          showToast('⚠️ 定位超时，请重试');
+        } else {
+          locText.textContent = '暂无法获取当前位置 · 请检查设备定位服务';
+          showToast('⚠️ 无法获取当前位置，请检查系统定位开关');
+        }
+        syncUI();
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      }
+    );
   }
 
   // =========================================================================
@@ -1591,6 +1606,11 @@
       `;
       syncUI();
       renderHistoryList();
+
+      // 切换到点外卖时，直接由用户点击触发浏览器位置授权弹窗
+      if (state.mode === 'takeout' && !state.location.ready) {
+        requestBrowserLocation();
+      }
     }
   });
 
@@ -1607,29 +1627,27 @@
   radiusSelect.addEventListener('change', () => {
     playSelectSound();
     state.radius = parseInt(radiusSelect.value, 10) || 3000;
-    scanNearbyShops(true);
+    if (state.location.ready) {
+      scanNearbyShops(true);
+    } else {
+      requestBrowserLocation();
+    }
   });
 
-  btnDraw.addEventListener('click', spinSlotMachine);
+  btnDraw.addEventListener('click', () => {
+    if (state.mode === 'takeout' && !state.location.ready) {
+      playSelectSound();
+      requestBrowserLocation(() => {
+        if (!state.isSpinning) spinSlotMachine();
+      });
+      return;
+    }
+    spinSlotMachine();
+  });
 
   btnRelocate.addEventListener('click', () => {
     playSelectSound();
-    cityPreset.value = '';
-    detectUserLocation();
-  });
-
-  cityPreset.addEventListener('change', () => {
-    if (!cityPreset.value) return;
-    playSelectSound();
-    const [lat, lng, label] = cityPreset.value.split(',');
-    const [city, district] = label.split('·');
-    state.location.lat = parseFloat(lat);
-    state.location.lng = parseFloat(lng);
-    state.location.city = city;
-    state.location.district = district || '';
-    state.location.label = label;
-    state.location.ready = true;
-    scanNearbyShops(true);
+    requestBrowserLocation();
   });
 
   btnSourceConfig.addEventListener('click', openSourceModal);

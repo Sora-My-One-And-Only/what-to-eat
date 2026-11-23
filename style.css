@@ -448,6 +448,18 @@ body[data-theme="dinner"] .sky-clouds {
   animation: pulse 1s infinite;
 }
 
+.loc-dot.error {
+  background: #f43f5e;
+  box-shadow: 0 0 8px #f43f5e;
+}
+
+.loc-auth-btn {
+  font-weight: 700;
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.42);
+  background: rgba(251, 191, 36, 0.14);
+}
+
 .loc-actions {
   display: flex;
   align-items: center;

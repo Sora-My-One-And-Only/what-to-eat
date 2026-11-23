@@ -62,11 +62,11 @@
         <div class="status-right-tag">一锅出 · 少洗碗</div>
       </div>
 
-      <!-- 点外卖状态层 -->
+      <!-- 点外卖状态层（纯浏览器授权定位，无默认城市预设） -->
       <div id="takeoutStatusLayer" class="status-layer">
         <div class="loc-left">
           <span class="loc-dot" id="locDot"></span>
-          <span id="locText" class="loc-text-ellipsis">正在扫描周边外卖店铺...</span>
+          <span id="locText" class="loc-text-ellipsis">需要浏览器定位授权以查找周边实店</span>
         </div>
         <div class="loc-actions">
           <select id="radiusSelect" class="city-select" title="选择外卖配送扫描范围">
@@ -74,20 +74,7 @@
             <option value="3000" selected>3km内</option>
             <option value="5000">5km内</option>
           </select>
-          <select id="cityPreset" class="city-select" title="切换城市/商圈">
-            <option value="">切换城市</option>
-            <option value="31.2304,121.4737,上海市·人民广场">上海市</option>
-            <option value="39.9042,116.4074,北京市·王府井">北京市</option>
-            <option value="23.1291,113.2644,广州市·天河城">广州市</option>
-            <option value="22.5431,114.0579,深圳市·福田中心">深圳市</option>
-            <option value="30.6574,104.0815,成都市·春熙路">成都市</option>
-            <option value="30.2741,120.1551,杭州市·西湖湖滨">杭州市</option>
-            <option value="30.5928,114.3055,武汉市·江汉路">武汉市</option>
-            <option value="28.2282,112.9388,长沙市·五一广场">长沙市</option>
-            <option value="29.5630,106.5516,重庆市·解放碑">重庆市</option>
-            <option value="34.3416,108.9398,西安市·钟楼">西安市</option>
-          </select>
-          <button type="button" id="btnRelocate" class="loc-btn" title="重新扫描定位">📍</button>
+          <button type="button" id="btnRelocate" class="loc-btn loc-auth-btn" title="向浏览器请求位置授权并刷新周边">📍 授权定位</button>
           <button type="button" id="btnSourceConfig" class="loc-btn" title="配置高德官方周边商户Key（可选）">⚙️</button>
         </div>
       </div>
