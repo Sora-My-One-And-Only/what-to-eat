@@ -2044,6 +2044,41 @@
     return isLittle ? '5克 (约1小勺)' : '20克 (约1小把)';
   }
 
+  // 专业厨房非线性分量换算系数（菜量翻倍时，盐/酱/香料/底油/炖水绝不能机械等比翻倍！）
+  function getCulinaryScaleProfile(ingName, baseFactor) {
+    if (!baseFactor || baseFactor === 1) {
+      return { factor: 1, label: '' };
+    }
+    const n = String(ingName || '').trim();
+
+    // 1. 强辛香料、增香提色料（八角/花椒/香叶/干辣椒/胡椒/老抽/鸡精/香油等）：最易过冲，温和缩放
+    if (/(八角|大料|桂皮|香叶|草果|豆蔻|丁香|小茴香|山奈|花椒|麻椒|干辣椒|小米辣|小米椒|辣椒面|辣椒粉|黑胡椒|白胡椒|胡椒粉|五香粉|十三香|孜然|咖喱粉|肉桂|老抽|香油|芝麻油|花椒油|藤椒油|鸡精|味精|松鲜鲜|酵母|泡打粉|小苏打)/.test(n)) {
+      const f = baseFactor > 1 ? 1.4 : 0.7;
+      return { factor: f, label: `强味香料非线性缩放 ×${f}（防过冲抢味）` };
+    }
+
+    // 2. 锅底油、爆香葱姜蒜、炖煮汤水（受锅底面积与蒸发率影响，非线性缩放）
+    if (/(食用油|植物油|花生油|菜籽油|玉米油|橄榄油|色拉油|猪油|黄油|^油$|葱|姜|蒜|香菜|^水$|清水|开水|温水|冷水|高汤|骨汤)/.test(n)) {
+      const f = baseFactor > 1 ? 1.5 : 0.65;
+      return { factor: f, label: `底油/爆香料/汤水按锅面蒸发率缩放 ×${f}` };
+    }
+
+    // 3. 基础咸鲜酸甜调味（盐/生抽/酱油/蚝油/糖/醋/料酒/豆瓣酱等）：菜多一倍约需 1.65 倍，防过咸
+    if (/(盐|生抽|酱油|味极鲜|豉油|蚝油|耗油|料酒|黄酒|花雕|米酒|清酒|味淋|醋|糖|冰糖|蜂蜜|豆瓣酱|黄豆酱|甜面酱|沙茶酱|柱侯酱|辣酱|番茄酱|沙拉酱|芝麻酱|豆豉|老干妈|淀粉|生粉|柠檬汁)/.test(n)) {
+      const f = baseFactor > 1 ? 1.65 : 0.6;
+      return { factor: f, label: `核心调味非线性缩放 ×${f}（防翻倍过咸）` };
+    }
+
+    // 4. 煲汤滋补干货/药材（适量温和放大，不完全死板翻倍）
+    if (/(百合|莲子|茯苓|芡实|玉竹|沙参|党参|黄芪|当归|麦冬|石斛|枸杞|陈皮|太子参|红枣|黑枣|桂圆)/.test(n)) {
+      const f = baseFactor > 1 ? 1.6 : 0.65;
+      return { factor: f, label: `煲汤干货温和缩放 ×${f}（保汤味清润）` };
+    }
+
+    // 5. 主食材、蔬菜、蛋肉、主食：严格等比缩放
+    return { factor: baseFactor, label: `主食材等比缩放 ×${baseFactor}` };
+  }
+
   function scaleAmountString(amountStr, factor) {
     if (!factor || factor === 1) return amountStr;
     return String(amountStr).replace(/(\d+)\/(\d+)|(\d+(?:\.\d+)?)/g, (match, num, den, dec) => {
@@ -2112,22 +2147,26 @@
       }
     }
 
+    const scaleProfile = getCulinaryScaleProfile(name || str, scaleFactor);
+
     // 如果仍是模糊词（少许/适量/一块/一把等），精准换算为具体克数/毫升/餐勺
     if (wasVague || !amount || VAGUE_AMOUNT_REGEX.test(amount)) {
       const concrete = estimateConcreteDosage(name, amount, dish);
       return {
         name: name || str,
-        amount: scaleAmountString(concrete, scaleFactor),
+        amount: scaleAmountString(concrete, scaleProfile.factor),
         quantified: true,
-        origHint: amount && amount !== '适量' ? amount : '适量'
+        origHint: amount && amount !== '适量' ? amount : '适量',
+        scaleNote: scaleProfile.label
       };
     }
 
     return {
       name: name || str,
-      amount: scaleAmountString(amount, scaleFactor),
+      amount: scaleAmountString(amount, scaleProfile.factor),
       quantified: false,
-      origHint: ''
+      origHint: '',
+      scaleNote: scaleProfile.label
     };
   }
 
@@ -2271,11 +2310,12 @@
 
     const ingredientsGridHTML = ings
       .map(rawIng => {
-        const { name, amount, quantified, origHint } = splitIngredientAndAmount(rawIng, dish, scaleFactor);
+        const { name, amount, quantified, origHint, scaleNote } = splitIngredientAndAmount(rawIng, dish, scaleFactor);
         const subMark = hasIngredientSub(rawIng) ? `<span class="ing-sub-dot" title="下方有本土平替方案">可平替</span>` : '';
-        const amountTitle = quantified
-          ? `title="原菜谱为「${origHint}」，已换算为具体家常用量（1小勺≈5g / 1大勺≈15ml）"`
-          : '';
+        const tipsArr = [];
+        if (quantified) tipsArr.push(`原菜谱为「${origHint}」，已换算为具体家常用量`);
+        if (scaleNote) tipsArr.push(scaleNote);
+        const amountTitle = tipsArr.length ? `title="${tipsArr.join(' · ')}"` : '';
         return `
         <div class="ing-check-item" role="button" tabindex="0">
           <div class="ing-check-left">
@@ -2375,7 +2415,11 @@
             <button type="button" class="serving-pill ${scaleFactor === 2 ? 'active' : ''}" data-scale="2">4人份</button>
           </div>
         </div>
-        <div class="dosage-measure-hint">📏 已将抽象“少许/适量”细化为具体克数与勺量（1小勺≈5g / 1大勺≈15ml）· 点击食材可勾选</div>
+        <div class="dosage-measure-hint">${
+          scaleFactor === 1
+            ? '📏 已将抽象“少许/适量”细化为具体克数与勺量（1小勺≈5g / 1大勺≈15ml）· 点击食材可勾选'
+            : '👨‍🍳 已按烹饪非线性法则换算：主料等比缩放，盐/酱/香料/底油/炖水按厨房经验折减（防过咸、防呛味）'
+        }</div>
         <div class="ing-checklist-grid">${ingredientsGridHTML}</div>
       </div>
 
