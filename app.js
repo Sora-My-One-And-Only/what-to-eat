@@ -652,6 +652,9 @@
   }
 
   function syncUI() {
+    // 同步昼夜主题配色与背景太阳/月亮旋转轨道角度（早餐=晨曦东升 / 午餐=晴空正顶 / 晚餐=暮色西落+星月）
+    document.body.dataset.theme = state.meal;
+
     const mealIdxMap = { breakfast: 0, lunch: 1, dinner: 2 };
     mealGroup.style.setProperty('--active-idx', mealIdxMap[state.meal] ?? 0);
     mealGroup.querySelectorAll('.segment-btn').forEach(btn => {
