@@ -585,6 +585,10 @@ body[data-theme="dinner"] .sky-clouds {
   isolation: isolate;
 }
 
+.segmented-control.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .segmented-control.cols-3 {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -606,6 +610,10 @@ body[data-theme="dinner"] .sky-clouds {
   transform: translateX(calc(var(--active-idx, 0) * 100%));
   transition: transform 0.34s var(--ease-spring), background 0.6s ease, border-color 0.6s ease, box-shadow 0.6s ease;
   pointer-events: none;
+}
+
+.segmented-control.cols-4 .segment-glider {
+  width: calc((100% - 6px) / 4);
 }
 
 .segmented-control.cols-3 .segment-glider {
@@ -2230,4 +2238,335 @@ body[data-theme="dinner"] .sky-clouds {
 @keyframes btnChargePulse {
   from { box-shadow: 0 2px 0 var(--primary-shadow), 0 0 14px rgba(251, 191, 36, 0.35); }
   to { box-shadow: 0 2px 0 var(--primary-shadow), 0 0 28px rgba(251, 191, 36, 0.72); }
+}
+
+/* =========================================================================
+   New Features: Celestial Hint, Rating Badges, Multi-API Source, Taste Profile
+   ========================================================================= */
+.step-sub-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  padding: 2px 9px;
+  border-radius: 99px;
+  letter-spacing: 0.3px;
+}
+
+.segmented-control.cols-4 .segment-btn {
+  font-size: 13px;
+  padding: 8px 4px;
+  gap: 4px;
+}
+
+@media (max-width: 460px) {
+  .segmented-control.cols-4 .segment-btn {
+    font-size: 11.5px;
+    padding: 7px 2px;
+    gap: 3px;
+  }
+  .segmented-control.cols-4 .pill-icon {
+    font-size: 13px;
+  }
+  .status-right-tag {
+    display: none;
+  }
+}
+
+/* Rating Star Badge & Personalized Match Badge */
+.badge-rating {
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.24), rgba(245, 158, 11, 0.2));
+  color: #fef08a;
+  border: 1px solid rgba(250, 204, 21, 0.52);
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.16);
+}
+
+.badge-match {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.26), rgba(236, 72, 153, 0.22));
+  color: #fbcfe8;
+  border: 1px solid rgba(244, 114, 182, 0.5);
+}
+
+/* Compact Inline Like/Dislike Feedback inside Fixed-Height Result Dock */
+.dock-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.feedback-inline-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.feedback-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-muted);
+  transition: all 0.18s ease;
+}
+
+.feedback-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.feedback-pill-btn.active-like {
+  background: rgba(34, 197, 94, 0.24);
+  border-color: rgba(74, 222, 128, 0.65);
+  color: #bbf7d0;
+}
+
+.feedback-pill-btn.active-dislike {
+  background: rgba(244, 63, 94, 0.24);
+  border-color: rgba(251, 113, 133, 0.65);
+  color: #fecdd3;
+}
+
+/* Multi-Provider API Source Cards */
+.source-field-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+  padding: 11px 12px;
+}
+
+.source-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff3e0;
+}
+
+/* Shop Modal Extras (Rating pill + Store photo + Recruit credit) */
+.nearby-shop-meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.nearby-shop-star {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fde047;
+  background: rgba(250, 204, 21, 0.16);
+  border: 1px solid rgba(250, 204, 21, 0.36);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.shop-hero-photo {
+  width: 100%;
+  max-height: 175px;
+  object-fit: cover;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: block;
+}
+
+.recruit-credit {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.recruit-credit a {
+  color: #7dd3fc;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.recruit-credit a:hover {
+  text-decoration: underline;
+}
+
+/* Taste Profile Modal (Offline Habits + Online AI Deep Analysis) */
+.taste-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .taste-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.taste-stat-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.taste-stat-val {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--accent-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.taste-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.taste-section-card {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 14px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.taste-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taste-bar-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.taste-bar-label {
+  font-weight: 700;
+  color: #fff3e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taste-bar-track {
+  height: 9px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.taste-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #f97316, #fbbf24, #ec4899);
+  transition: width 0.5s var(--ease-spring);
+}
+
+.taste-bar-val {
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fde68a;
+  font-variant-numeric: tabular-nums;
+}
+
+.taste-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.taste-tag-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: rgba(255, 179, 0, 0.14);
+  border: 1px solid rgba(255, 179, 0, 0.3);
+  color: #ffe082;
+}
+
+.taste-tag-pill.liked {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #bbf7d0;
+}
+
+.taste-tag-pill.disliked {
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.35);
+  color: #fecdd3;
+}
+
+.taste-ai-box {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.11) 0%, rgba(14, 165, 233, 0.08) 100%);
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  border-radius: 14px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.taste-ai-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .taste-ai-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.taste-ai-result {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #f1f5f9;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  padding: 11px 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.taste-persona-banner {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.16), rgba(249, 115, 22, 0.14));
+  border: 1px solid rgba(251, 146, 60, 0.38);
+  border-radius: 13px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.58;
+  color: #fff7ed;
+}
+
+.taste-persona-banner strong {
+  color: #fde047;
 }
