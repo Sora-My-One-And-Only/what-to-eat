@@ -1980,3 +1980,254 @@ body[data-theme="dinner"] .sky-clouds {
   50% { transform: translateX(28px); }
   100% { transform: translateX(-18px); }
 }
+
+/* =========================================================================
+   Four-Stage Gacha Spin Ritual & Jackpot FX (四段式仪式感与高光特效)
+   ========================================================================= */
+.ritual-spotlight {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 54%, rgba(0, 0, 0, 0.08) 0%, rgba(4, 6, 14, 0.68) 72%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 15;
+  transition: opacity 0.4s ease;
+}
+
+.ritual-spotlight.active {
+  opacity: 1;
+}
+
+.slot-machine-section {
+  position: relative;
+  z-index: 1;
+  transition: z-index 0s;
+}
+
+.slot-machine-section.in-ritual {
+  z-index: 25;
+}
+
+/* Rotating Conic Neon Energy Aura Behind Slot Frame */
+.slot-neon-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 26px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    #ffb300 60deg,
+    #ff5722 120deg,
+    transparent 180deg,
+    #38bdf8 240deg,
+    #f472b6 300deg,
+    transparent 360deg
+  );
+  filter: blur(12px);
+  opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+.slot-frame.winding-up .slot-neon-ring {
+  opacity: 0.55;
+  animation: neonRingSpin 1.8s linear infinite;
+}
+
+.slot-frame.spinning .slot-neon-ring {
+  opacity: 0.92;
+  animation: neonRingSpin 0.9s linear infinite;
+}
+
+.slot-frame.won .slot-neon-ring {
+  opacity: 0.78;
+  background: conic-gradient(from 0deg, #fde047, #fb923c, #f472b6, #fde047);
+  animation: neonRingSpin 4s linear infinite;
+}
+
+/* Wind-Up Physical Compression */
+.slot-frame.winding-up {
+  transform: scale(0.985);
+  border-color: #fbbf24;
+  box-shadow: 0 0 28px rgba(251, 191, 36, 0.45), inset 0 0 22px rgba(255, 87, 34, 0.3);
+}
+
+/* Celebratory Micro-Impact Pop on Jackpot Lock */
+.slot-frame.won {
+  animation: jackpotPop 0.52s var(--ease-bounce);
+}
+
+/* Top Floating Jackpot Banner (Zero Layout Shift via position:absolute) */
+.slot-win-banner {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.6) translateY(8px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 8;
+  padding: 3px 14px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #ec4899 100%);
+  border: 1px solid rgba(254, 240, 138, 0.85);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.55);
+  transition: opacity 0.28s ease, transform 0.38s var(--ease-bounce);
+}
+
+.slot-win-banner.show {
+  opacity: 1;
+  transform: translateX(-50%) scale(1) translateY(0);
+}
+
+/* Dynamic High-Speed Motion Blur + Vertical Speed Streaks */
+.slot-reel {
+  transition: filter 0.28s ease;
+}
+
+.slot-frame.rush .slot-reel {
+  filter: blur(2px) brightness(1.08);
+}
+
+.slot-frame.spinning .slot-speed-lines {
+  opacity: 1;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent 8%,
+      rgba(254, 240, 138, 0.08) 8.4%,
+      transparent 9%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 28px,
+      rgba(255, 179, 0, 0.09) 32px,
+      transparent 38px
+    );
+  animation: speedStreakScroll 0.22s linear infinite;
+}
+
+/* Heartbeat Braking Suspense Pointers */
+.slot-frame.braking .slot-pointer {
+  color: #fde047;
+  text-shadow: 0 0 12px #fbbf24;
+  animation: pointerPulse 0.26s ease-in-out infinite alternate;
+}
+
+/* Golden Sunburst Rays Behind Winning Card */
+.slot-win-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 340px;
+  height: 340px;
+  margin-top: -170px;
+  margin-left: -170px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(254, 240, 138, 0.16) 0deg 12deg,
+    transparent 12deg 24deg
+  );
+  -webkit-mask-image: radial-gradient(circle, black 8%, transparent 66%);
+  mask-image: radial-gradient(circle, black 8%, transparent 66%);
+  transition: opacity 0.45s ease;
+}
+
+.slot-frame.won .slot-win-rays {
+  opacity: 1;
+  animation: sunRaysSpin 16s linear infinite;
+}
+
+/* Diagonal Golden Prism Flash Sweep on Landing */
+.slot-flash-sweep {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.65) 48%,
+    rgba(254, 240, 138, 0.55) 54%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+}
+
+.slot-flash-sweep.flash {
+  animation: flashSweep 0.68s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Second Staggered Shockwave Ring */
+.slot-shockwave-2 {
+  border-color: rgba(255, 87, 34, 0.78);
+}
+
+.slot-shockwave-2.boom {
+  animation: shockwaveExpand 0.8s 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Winning Card Emoji & Name Pop */
+.slot-frame.won .dish-emoji {
+  animation: emojiJackpot 0.6s var(--ease-bounce) forwards;
+}
+
+.slot-frame.won .dish-name {
+  text-shadow: 0 0 18px rgba(254, 240, 138, 0.65), 0 2px 12px rgba(255, 87, 34, 0.55);
+}
+
+/* Button Charging Pulse while Spinning */
+.draw-btn.charging {
+  animation: btnChargePulse 0.45s ease-in-out infinite alternate;
+}
+
+@keyframes neonRingSpin {
+  from { filter: blur(12px) hue-rotate(0deg); }
+  to { filter: blur(12px) hue-rotate(360deg); }
+}
+
+@keyframes speedStreakScroll {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, 0 38px; }
+}
+
+@keyframes pointerPulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.45); }
+}
+
+@keyframes flashSweep {
+  0% { opacity: 0.95; transform: translateX(-110%); }
+  100% { opacity: 0; transform: translateX(120%); }
+}
+
+@keyframes jackpotPop {
+  0% { transform: scale(0.97); }
+  45% { transform: scale(1.032); }
+  75% { transform: scale(0.992); }
+  100% { transform: scale(1); }
+}
+
+@keyframes emojiJackpot {
+  0% { transform: scale(0.8) rotate(-10deg); }
+  55% { transform: scale(1.26) rotate(6deg); }
+  80% { transform: scale(1.08) rotate(-3deg); }
+  100% { transform: scale(1.16) rotate(0deg); }
+}
+
+@keyframes btnChargePulse {
+  from { box-shadow: 0 2px 0 var(--primary-shadow), 0 0 14px rgba(251, 191, 36, 0.35); }
+  to { box-shadow: 0 2px 0 var(--primary-shadow), 0 0 28px rgba(251, 191, 36, 0.72); }
+}

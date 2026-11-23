@@ -76,10 +76,15 @@
   const cookStatusLayer = document.getElementById('cookStatusLayer');
   const lazyStatusLayer = document.getElementById('lazyStatusLayer');
   const takeoutStatusLayer = document.getElementById('takeoutStatusLayer');
+  const ritualSpotlight = document.getElementById('ritualSpotlight');
+  const slotMachineSection = document.getElementById('slotMachineSection');
   const slotFrame = document.getElementById('slotFrame');
   const slotWindow = document.getElementById('slotWindow');
   const slotReel = document.getElementById('slotReel');
   const slotShockwave = document.getElementById('slotShockwave');
+  const slotShockwave2 = document.getElementById('slotShockwave2');
+  const slotFlashSweep = document.getElementById('slotFlashSweep');
+  const slotWinBanner = document.getElementById('slotWinBanner');
   const btnDraw = document.getElementById('btnDraw');
   const resultDock = document.getElementById('resultDock');
   const dockIdle = document.getElementById('dockIdle');
@@ -130,7 +135,7 @@
   }
 
   // =========================================================================
-  // 1. 礼花粒子特效系统 (60fps 轻量级 Canvas 粒子)
+  // 1. 多波次礼花烟花 + 美食Emoji彩带 + 聚能火星粒子系统 (60fps Canvas)
   // =========================================================================
   const ctx = fxCanvas.getContext('2d');
   let particles = [];
@@ -144,32 +149,146 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
-  function triggerWinParticles() {
-    const rect = slotWindow.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const colors = ['#ffb300', '#ff7043', '#ffd54f', '#22c55e', '#38bdf8', '#fda4af'];
-
-    for (let i = 0; i < 42; i++) {
-      const angle = (Math.PI * 2 * i) / 42 + (Math.random() - 0.5) * 0.25;
-      const speed = 3.5 + Math.random() * 6.5;
-      particles.push({
-        x: cx + (Math.random() - 0.5) * 80,
-        y: cy + (Math.random() - 0.5) * 30,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 2.2,
-        size: 4 + Math.random() * 4.5,
-        color: colors[i % colors.length],
-        rotation: Math.random() * Math.PI * 2,
-        vRot: (Math.random() - 0.5) * 0.22,
-        alpha: 1,
-        decay: 0.016 + Math.random() * 0.012
-      });
-    }
-
+  function ensureParticleLoop() {
     if (!animFrameId) {
       renderParticles();
     }
+  }
+
+  // 转动期间环绕老虎机的上升聚能火星
+  function emitSpinSparks() {
+    const rect = slotFrame.getBoundingClientRect();
+    const sparkColors = ['#fde047', '#fb923c', '#38bdf8', '#f472b6'];
+    for (let i = 0; i < 4; i++) {
+      const fromLeft = Math.random() > 0.5;
+      particles.push({
+        kind: 'spark',
+        x: fromLeft ? rect.left + Math.random() * 24 : rect.right - Math.random() * 24,
+        y: rect.top + Math.random() * rect.height,
+        vx: (fromLeft ? -1 : 1) * (0.4 + Math.random() * 1.4),
+        vy: -(1.8 + Math.random() * 2.8),
+        size: 2.2 + Math.random() * 2.4,
+        color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
+        gravity: -0.02,
+        drag: 0.99,
+        alpha: 0.95,
+        decay: 0.032 + Math.random() * 0.02
+      });
+    }
+    ensureParticleLoop();
+  }
+
+  // 定格高光：三波次全屏狂欢特效（中心星爆 + 获奖Emoji飞舞 + 左右礼花加农炮）
+  function triggerJackpotFireworks(winnerEmoji) {
+    const rect = slotWindow.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const colors = ['#fde047', '#fb923c', '#ff5722', '#ec4899', '#38bdf8', '#4ade80', '#ffffff'];
+
+    // Wave 1: 中心超级星爆彩带与闪星 (64枚)
+    for (let i = 0; i < 64; i++) {
+      const angle = (Math.PI * 2 * i) / 64 + (Math.random() - 0.5) * 0.22;
+      const speed = 4.2 + Math.random() * 8.5;
+      particles.push({
+        kind: i % 4 === 0 ? 'star' : 'ribbon',
+        x: cx + (Math.random() - 0.5) * 60,
+        y: cy + (Math.random() - 0.5) * 24,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2.8,
+        size: 5 + Math.random() * 5.5,
+        color: colors[i % colors.length],
+        rotation: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.28,
+        gravity: 0.2,
+        drag: 0.982,
+        alpha: 1,
+        decay: 0.012 + Math.random() * 0.009
+      });
+    }
+
+    // Wave 1B: 获奖美食专属 Emoji 欢乐飞溅 (8枚)
+    const emojiChar = winnerEmoji || '🎉';
+    for (let i = 0; i < 8; i++) {
+      const angle = -Math.PI * 0.85 + (Math.PI * 0.7 * i) / 7 + (Math.random() - 0.5) * 0.15;
+      const speed = 5.2 + Math.random() * 3.8;
+      particles.push({
+        kind: 'emoji',
+        emoji: emojiChar,
+        x: cx + (Math.random() - 0.5) * 50,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1.5,
+        size: 20 + Math.random() * 8,
+        rotation: (Math.random() - 0.5) * 0.5,
+        vRot: (Math.random() - 0.5) * 0.08,
+        gravity: 0.19,
+        drag: 0.985,
+        alpha: 1,
+        decay: 0.013
+      });
+    }
+
+    // Wave 2 (延迟 200ms): 左右两侧礼花加农炮交叉喷射！
+    setTimeout(() => {
+      const fRect = slotFrame.getBoundingClientRect();
+      const leftX = fRect.left + 12;
+      const rightX = fRect.right - 12;
+      const cannonY = fRect.bottom - 18;
+
+      for (let i = 0; i < 28; i++) {
+        // 左炮向右上方发射
+        const aL = -Math.PI * 0.22 - Math.random() * 0.45;
+        const spL = 7 + Math.random() * 6.5;
+        particles.push({
+          kind: i % 3 === 0 ? 'star' : 'ribbon',
+          x: leftX,
+          y: cannonY,
+          vx: Math.cos(aL) * spL,
+          vy: Math.sin(aL) * spL,
+          size: 4.5 + Math.random() * 5,
+          color: colors[i % colors.length],
+          rotation: Math.random() * Math.PI * 2,
+          vRot: (Math.random() - 0.5) * 0.3,
+          gravity: 0.22,
+          drag: 0.982,
+          alpha: 1,
+          decay: 0.012 + Math.random() * 0.008
+        });
+
+        // 右炮向左上方发射
+        const aR = -Math.PI * 0.78 + Math.random() * 0.45;
+        const spR = 7 + Math.random() * 6.5;
+        particles.push({
+          kind: i % 3 === 0 ? 'star' : 'ribbon',
+          x: rightX,
+          y: cannonY,
+          vx: Math.cos(aR) * spR,
+          vy: Math.sin(aR) * spR,
+          size: 4.5 + Math.random() * 5,
+          color: colors[(i + 2) % colors.length],
+          rotation: Math.random() * Math.PI * 2,
+          vRot: (Math.random() - 0.5) * 0.3,
+          gravity: 0.22,
+          drag: 0.982,
+          alpha: 1,
+          decay: 0.012 + Math.random() * 0.008
+        });
+      }
+      ensureParticleLoop();
+    }, 200);
+
+    ensureParticleLoop();
+  }
+
+  function drawStar(c, r) {
+    c.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2;
+      c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      c.lineTo(Math.cos(a + Math.PI / 4) * (r * 0.35), Math.sin(a + Math.PI / 4) * (r * 0.35));
+    }
+    c.closePath();
+    c.fill();
   }
 
   function renderParticles() {
@@ -179,19 +298,37 @@
     for (const p of particles) {
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.22;
-      p.vx *= 0.985;
-      p.rotation += p.vRot;
+      p.vy += p.gravity ?? 0.2;
+      p.vx *= p.drag ?? 0.985;
+      p.rotation = (p.rotation || 0) + (p.vRot || 0);
       p.alpha -= p.decay;
 
       ctx.save();
       ctx.globalAlpha = Math.max(0, p.alpha);
       ctx.translate(p.x, p.y);
-      ctx.rotate(p.rotation);
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.roundRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.65, 2);
-      ctx.fill();
+      ctx.rotate(p.rotation || 0);
+
+      if (p.kind === 'emoji') {
+        ctx.font = `${Math.round(p.size)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.emoji, 0, 0);
+      } else if (p.kind === 'spark') {
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = p.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === 'star') {
+        ctx.fillStyle = p.color;
+        drawStar(ctx, p.size * 0.85);
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.roundRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.58, 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 
@@ -204,23 +341,49 @@
   }
 
   // =========================================================================
-  // 2. Web Audio API 物理棘轮音效 & 中奖和弦
+  // 2. Web Audio API 街机抽卡音效（蓄力升调 + 物理棘轮 + 大和弦胜利号角）
   // =========================================================================
   let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playWindupSound() {
+    try {
+      const ac = getAudioCtx();
+      const now = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(160, now);
+      osc.frequency.exponentialRampToValueAtTime(620, now + 0.26);
+      gain.gain.setValueAtTime(0.005, now);
+      gain.gain.linearRampToValueAtTime(0.055, now + 0.22);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.29);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } catch (_) {}
+  }
+
   function playTickSound(freq = 520, volume = 0.045) {
     try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+      const ac = getAudioCtx();
+      const now = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(volume, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.032);
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.72, now + 0.036);
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.038);
       osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.032);
+      gain.connect(ac.destination);
+      osc.start(now);
+      osc.stop(now + 0.04);
     } catch (_) {}
   }
 
@@ -228,21 +391,39 @@
     playTickSound(640, 0.025);
   }
 
-  function playWinSound() {
+  // 街机大奖多声部胜利和弦（浑厚低音脉冲 + 明亮大九和弦钟声琶音）
+  function playJackpotFanfare() {
     try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const notes = [523.25, 659.25, 783.99, 1046.5];
+      const ac = getAudioCtx();
+      const now = ac.currentTime;
+
+      // 低音冲击脉冲
+      const bass = ac.createOscillator();
+      const bassGain = ac.createGain();
+      bass.type = 'triangle';
+      bass.frequency.setValueAtTime(130.81, now);
+      bass.frequency.exponentialRampToValueAtTime(65.41, now + 0.35);
+      bassGain.gain.setValueAtTime(0.12, now);
+      bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+      bass.connect(bassGain);
+      bassGain.connect(ac.destination);
+      bass.start(now);
+      bass.stop(now + 0.4);
+
+      // 璀璨大九和弦上行琶音 (C5 - E5 - G5 - B5 - C6 - E6)
+      const notes = [523.25, 659.25, 783.99, 987.77, 1046.5, 1318.51];
       notes.forEach((n, idx) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(n, audioCtx.currentTime + idx * 0.065);
-        gain.gain.setValueAtTime(0.075, audioCtx.currentTime + idx * 0.065);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.065 + 0.24);
+        const t = now + idx * 0.055;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = idx >= 4 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(n, t);
+        gain.gain.setValueAtTime(0.075, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + (idx === notes.length - 1 ? 0.55 : 0.28));
         osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(audioCtx.currentTime + idx * 0.065);
-        osc.stop(audioCtx.currentTime + idx * 0.065 + 0.24);
+        gain.connect(ac.destination);
+        osc.start(t);
+        osc.stop(t + 0.6);
       });
     } catch (_) {}
   }
@@ -837,15 +1018,26 @@
 
     state.isSpinning = true;
     btnDraw.disabled = true;
-    btnDraw.querySelector('.draw-btn-text').textContent = '好运飞速滚动中...';
-    slotFrame.classList.remove('won');
-    slotFrame.classList.add('spinning');
+    btnDraw.classList.add('charging');
+    btnDraw.querySelector('.draw-btn-text').textContent = '⚡ 聚能蓄力中...';
+
+    // 清理上一轮中奖状态
+    slotFrame.classList.remove('won', 'rush', 'braking', 'spinning');
     slotShockwave.classList.remove('boom');
+    slotShockwave2.classList.remove('boom');
+    slotFlashSweep.classList.remove('flash');
+    slotWinBanner.classList.remove('show');
+
+    // Stage 1: 开启聚光灯舞台 + 物理蓄力回拉 (0ms ~ 270ms)
+    ritualSpotlight.classList.add('active');
+    slotMachineSection.classList.add('in-ritual');
+    slotFrame.classList.add('winding-up');
+    playWindupSound();
 
     dockIdleText.textContent =
       state.mode === 'takeout' && pool[0]?.isRealShop
-        ? `🛵 正在周围 ${state.radius / 1000}km 的 ${pool.length} 家真实店铺中抽选...`
-        : '🎲 正在从美食库中为你锁定今日天命美食...';
+        ? `🛵 正在周围 ${state.radius / 1000}km 的 ${pool.length} 家真实店铺中锁定目标...`
+        : '⚡ 正在开启天命美食转轮，准备起飞...';
     setDockMode('idle');
 
     let winner = pool[Math.floor(Math.random() * pool.length)];
@@ -858,7 +1050,7 @@
       ? slotReel.lastElementChild.outerHTML
       : slotReel.innerHTML;
 
-    const totalNewCards = 30;
+    const totalNewCards = 40;
     const sequenceHTML = [currentFirstCardHTML];
     for (let i = 0; i < totalNewCards - 1; i++) {
       const randItem = pool[Math.floor(Math.random() * pool.length)];
@@ -866,49 +1058,92 @@
     }
     sequenceHTML.push(createReelCardHTML(winner));
 
+    // 先装填卷轴并做 26px 物理反向蓄力回拉
     slotReel.style.transition = 'none';
     slotReel.style.transform = 'translate3d(0, 0, 0)';
     slotReel.innerHTML = sequenceHTML.join('');
-
     void slotReel.offsetHeight;
 
+    slotReel.style.transition = 'transform 260ms cubic-bezier(0.3, 0, 0.2, 1)';
+    slotReel.style.transform = 'translate3d(0, 26px, 0)';
+
     const targetOffset = -totalNewCards * CARD_HEIGHT;
-    const durationMs = 2400;
-
-    slotReel.style.transition = `transform ${durationMs}ms cubic-bezier(0.14, 0.92, 0.22, 1.016)`;
-    slotReel.style.transform = `translate3d(0, ${targetOffset}px, 0)`;
-
-    let tickCount = 0;
+    const spinDurationMs = 2850;
     const tickTimers = [];
-    for (let i = 0; i < 18; i++) {
-      const progress = i / 18;
-      const delay = Math.pow(progress, 1.95) * (durationMs - 220);
-      tickTimers.push(
-        setTimeout(() => {
-          playTickSound(420 + (tickCount % 6) * 38, 0.042);
-          tickCount++;
-        }, delay)
-      );
-    }
+    let sparkInterval = null;
 
+    // Stage 2: 极速冲刺 + 动态模糊 + 环绕上升火星 (270ms)
     setTimeout(() => {
-      tickTimers.forEach(clearTimeout);
-      state.isSpinning = false;
-      state.currentDish = winner;
+      slotFrame.classList.remove('winding-up');
+      slotFrame.classList.add('spinning', 'rush');
+      btnDraw.querySelector('.draw-btn-text').textContent = '🔥 命运飞速转动中...';
+      dockIdleText.textContent = '🔥 极速翻滚中，今天究竟花落谁家？';
 
-      slotFrame.classList.remove('spinning');
-      slotFrame.classList.add('won');
-      slotShockwave.classList.add('boom');
+      void slotReel.offsetHeight;
+      slotReel.style.transition = `transform ${spinDurationMs}ms cubic-bezier(0.11, 0.92, 0.18, 1.018)`;
+      slotReel.style.transform = `translate3d(0, ${targetOffset}px, 0)`;
 
-      playWinSound();
-      triggerWinParticles();
+      // 持续喷射环绕机器的上升火星
+      sparkInterval = setInterval(emitSpinSparks, 110);
 
-      btnDraw.disabled = false;
-      btnDraw.querySelector('.draw-btn-text').textContent = '换一个？再抽一次';
+      // 递增后递减的心跳棘轮节奏音效 (24声)
+      for (let i = 0; i < 24; i++) {
+        const progress = i / 24;
+        const delay = Math.pow(progress, 2.05) * (spinDurationMs - 200);
+        const isLastThree = i >= 21;
+        tickTimers.push(
+          setTimeout(() => {
+            const freq = isLastThree ? 360 + (i - 21) * 55 : 440 + (i % 7) * 42;
+            const vol = isLastThree ? 0.062 : 0.042;
+            playTickSound(freq, vol);
+          }, delay)
+        );
+      }
 
-      addToHistory(winner);
-      renderResultDock(winner);
-    }, durationMs + 40);
+      // Stage 3: 心跳急刹悬念阶段（解除动态模糊，两侧指针高频爆闪）
+      setTimeout(() => {
+        slotFrame.classList.remove('rush');
+        slotFrame.classList.add('braking');
+        btnDraw.querySelector('.draw-btn-text').textContent = '🥁 即将揭晓天命美食...';
+        dockIdleText.textContent = '🥁 减速定格中，屏住呼吸...';
+        if (sparkInterval) {
+          clearInterval(sparkInterval);
+          sparkInterval = null;
+        }
+      }, Math.round(spinDurationMs * 0.58));
+
+      // Stage 4: 黄金高光揭晓 + 双波冲击波 + 棱镜扫光 + 三波烟花加农炮 + 大和弦号角
+      setTimeout(() => {
+        tickTimers.forEach(clearTimeout);
+        if (sparkInterval) clearInterval(sparkInterval);
+
+        state.isSpinning = false;
+        state.currentDish = winner;
+
+        ritualSpotlight.classList.remove('active');
+        slotMachineSection.classList.remove('in-ritual');
+        slotFrame.classList.remove('spinning', 'rush', 'braking');
+        slotFrame.classList.add('won');
+
+        // 触发双波冲击波、棱镜扫屏高光与顶部天命徽章
+        void slotFlashSweep.offsetWidth;
+        slotFlashSweep.classList.add('flash');
+        slotShockwave.classList.add('boom');
+        slotShockwave2.classList.add('boom');
+        slotWinBanner.textContent = winner.isRealShop ? '✨ 今日周边天命好店 ✨' : '✨ 今日天命美食已定 ✨';
+        slotWinBanner.classList.add('show');
+
+        playJackpotFanfare();
+        triggerJackpotFireworks(winner.emoji);
+
+        btnDraw.disabled = false;
+        btnDraw.classList.remove('charging');
+        btnDraw.querySelector('.draw-btn-text').textContent = '再转一次！换个手气';
+
+        addToHistory(winner);
+        renderResultDock(winner);
+      }, spinDurationMs + 30);
+    }, 270);
   }
 
   // =========================================================================
@@ -1581,6 +1816,7 @@
       state.mode = btn.dataset.mode;
       state.currentDish = null;
       slotFrame.classList.remove('won');
+      slotWinBanner.classList.remove('show');
       setDockMode('idle');
 
       const hintMap = {

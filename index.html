@@ -34,6 +34,8 @@
     </div>
     <div class="sky-vignette"></div>
   </div>
+  <!-- 抽卡聚光灯暗幕（转动时柔和压暗四周，聚焦视觉到老虎机，0布局偏移） -->
+  <div class="ritual-spotlight" id="ritualSpotlight" aria-hidden="true"></div>
   <canvas id="fxCanvas" class="fx-canvas"></canvas>
 
   <main class="app-container">
@@ -149,8 +151,13 @@
     </section>
 
     <!-- 老虎机滚轮抽选机 -->
-    <section class="slot-machine-section">
+    <section class="slot-machine-section" id="slotMachineSection">
       <div class="slot-frame" id="slotFrame">
+        <!-- 旋转霓虹聚能边框光晕 -->
+        <div class="slot-neon-ring" aria-hidden="true"></div>
+        <!-- 顶部中奖天命微徽章（定格揭晓瞬间弹现） -->
+        <div class="slot-win-banner" id="slotWinBanner">✨ 今日天命已定 ✨</div>
+
         <div class="slot-lights">
           <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
@@ -158,11 +165,15 @@
         <div class="slot-window" id="slotWindow">
           <div class="slot-fade-top"></div>
           <div class="slot-speed-lines" id="slotSpeedLines"></div>
+          <!-- 中奖瞬间金色圣光与棱镜扫光 -->
+          <div class="slot-win-rays" id="slotWinRays"></div>
+          <div class="slot-flash-sweep" id="slotFlashSweep"></div>
           <div class="slot-center-highlight">
             <div class="slot-pointer left">▶</div>
             <div class="slot-pointer right">◀</div>
           </div>
           <div class="slot-shockwave" id="slotShockwave"></div>
+          <div class="slot-shockwave slot-shockwave-2" id="slotShockwave2"></div>
           <div class="slot-reel" id="slotReel">
             <div class="reel-card">
               <div class="dish-emoji">🎰</div>
