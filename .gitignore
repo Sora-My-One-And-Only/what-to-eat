@@ -1,0 +1,13 @@
+# Local build & raw dataset artifacts (not needed for GitHub Pages)
+server.js
+build_data.js
+howtocook_*.json
+yunyoujun_*.*
+*.jsonl
+*.csv
+*.log
+.env
+.env.*
+node_modules/
+.DS_Store
+Thumbs.db
