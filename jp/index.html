@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今日なに食べる？ · 毎日のごはんガチャ</title>
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .app-header {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lang-switch-pill {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(12px);
+      transition: color 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .lang-switch-pill:hover {
+      color: #fff;
+      border-color: var(--accent-gold);
+      transform: translateY(-50%) scale(1.03);
+    }
+  </style>
+</head>
+<body data-theme="breakfast">
+  <!-- 時間帯で移ろう空と太陽・月の公転背景 -->
+  <div class="sky-backdrop" aria-hidden="true">
+    <div class="sky-layer sky-breakfast"></div>
+    <div class="sky-layer sky-lunch"></div>
+    <div class="sky-layer sky-dinner"></div>
+    <div class="sky-stars"></div>
+
+    <div class="celestial-wheel" id="celestialWheel">
+      <div class="celestial-sun">
+        <div class="sun-rays"></div>
+        <div class="sun-corona"></div>
+        <div class="sun-core"></div>
+      </div>
+      <div class="celestial-moon">
+        <div class="moon-halo"></div>
+        <div class="moon-disc"></div>
+      </div>
+    </div>
+
+    <div class="sky-clouds">
+      <div class="cloud cloud-1"></div>
+      <div class="cloud cloud-2"></div>
+      <div class="cloud cloud-3"></div>
+    </div>
+    <div class="sky-vignette"></div>
+  </div>
+
+  <!-- ガチャ演出スポットライト＆花火キャンバス -->
+  <div class="ritual-spotlight" id="ritualSpotlight" aria-hidden="true"></div>
+  <canvas id="fxCanvas" class="fx-canvas"></canvas>
+
+  <main class="app-container">
+    <!-- タイトル＆言語切替 -->
+    <header class="app-header">
+      <h1 class="app-title">今日なに食べる？</h1>
+      <a href="../index.html" class="lang-switch-pill" title="中国語版（中華・アジア向け）へ切替">🇨🇳 中文版</a>
+    </header>
+
+    <!-- 固定高さステータスバー（4モード切替・レイアウトシフト0） -->
+    <div class="status-stage">
+      <!-- 自炊モード -->
+      <div id="cookStatusLayer" class="status-layer active">
+        <div class="loc-left">
+          <span class="status-icon-badge">🍳</span>
+          <span class="loc-text-ellipsis">自炊モード · スーパー食材＆大さじ・グラム明記</span>
+        </div>
+        <div class="loc-actions">
+          <span class="status-right-tag">代用ガイド＆人数換算付</span>
+          <button type="button" class="loc-btn btn-open-taste" title="オフライン食の好み診断を見る">📊 好み診断</button>
+        </div>
+      </div>
+
+      <!-- ズボラ飯モード -->
+      <div id="lazyStatusLayer" class="status-layer">
+        <div class="loc-left">
+          <span class="status-icon-badge">⚡</span>
+          <span class="loc-text-ellipsis">ズボラ飯 · レンチン / 炊飯器 / 冷凍うどん / 10分</span>
+        </div>
+        <div class="loc-actions">
+          <span class="status-right-tag">洗い物少なめ・包丁いらず</span>
+          <button type="button" class="loc-btn btn-open-taste" title="オフライン食の好み診断を見る">📊 好み診断</button>
+        </div>
+      </div>
+
+      <!-- 外食・デリバリーモード（ブラウザ位置情報のみ・Google星評価 / Hot Pepper対応） -->
+      <div id="takeoutStatusLayer" class="status-layer">
+        <div class="loc-left">
+          <span class="loc-dot" id="locDot"></span>
+          <span id="locText" class="loc-text-ellipsis">現在地の許可で周辺の実店舗を探します</span>
+        </div>
+        <div class="loc-actions">
+          <select id="radiusSelect" class="city-select" title="周辺検索の半径を選択">
+            <option value="1000">1km圏内</option>
+            <option value="3000" selected>3km圏内</option>
+            <option value="5000">5km圏内</option>
+          </select>
+          <button type="button" id="btnRelocate" class="loc-btn loc-auth-btn" title="ブラウザに位置情報の利用を許可">📍 現在地取得</button>
+          <button type="button" id="btnSourceConfig" class="loc-btn" title="Google Places（星評価）/ ホットペッパーAPI設定">⚙️</button>
+        </div>
+      </div>
+
+      <!-- おすすめモード -->
+      <div id="guessStatusLayer" class="status-layer">
+        <div class="loc-left">
+          <span class="status-icon-badge">❤️</span>
+          <span id="guessStatusText" class="loc-text-ellipsis">あなたへのおすすめ · ローカル履歴から好みを分析中</span>
+        </div>
+        <div class="loc-actions">
+          <button type="button" class="loc-btn loc-auth-btn btn-open-taste" title="オフライン食の好み診断を見る">📊 好みカルテ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3ステップ選択パネル -->
+    <section class="steps-panel">
+      <!-- STEP 1: 朝・昼・夜 -->
+      <div class="step-card">
+        <div class="step-label">
+          <span class="step-num">1</span>
+          <span class="step-name">時間帯を選ぶ</span>
+          <span class="step-sub-hint" id="mealSkyHint">🌅 朝焼けの空</span>
+        </div>
+        <div class="segmented-control cols-3" id="mealGroup" style="--active-idx: 0;">
+          <div class="segment-glider"></div>
+          <button type="button" class="segment-btn active" data-meal="breakfast" data-idx="0">
+            <span class="pill-icon">🌅</span><span>朝ごはん</span>
+          </button>
+          <button type="button" class="segment-btn" data-meal="lunch" data-idx="1">
+            <span class="pill-icon">☀️</span><span>昼ごはん</span>
+          </button>
+          <button type="button" class="segment-btn" data-meal="dinner" data-idx="2">
+            <span class="pill-icon">🌙</span><span>夜ごはん</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: 食べ方・モード -->
+      <div class="step-card">
+        <div class="step-label">
+          <span class="step-num">2</span>
+          <span class="step-name">食べ方を選ぶ</span>
+        </div>
+        <div class="segmented-control cols-4" id="modeGroup" style="--active-idx: 0;">
+          <div class="segment-glider"></div>
+          <button type="button" class="segment-btn active" data-mode="cook" data-idx="0">
+            <span class="pill-icon">🍳</span><span>自炊する</span>
+          </button>
+          <button type="button" class="segment-btn" data-mode="lazy" data-idx="1">
+            <span class="pill-icon">⚡</span><span>ズボラ飯</span>
+          </button>
+          <button type="button" class="segment-btn" data-mode="takeout" data-idx="2">
+            <span class="pill-icon">🛵</span><span>外食・宅配</span>
+          </button>
+          <button type="button" class="segment-btn" data-mode="guess" data-idx="3">
+            <span class="pill-icon">❤️</span><span>おすすめ</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 3: 日本の食卓向け 3×4 ジャンルグリッド -->
+      <div class="step-card">
+        <div class="step-label">
+          <span class="step-num">3</span>
+          <span class="step-name">ジャンルを選ぶ</span>
+          <span class="pool-count" id="poolCount">候補 <b id="poolCountNum">--</b> 品</span>
+        </div>
+        <div class="cuisine-grid" id="cuisineGroup">
+          <button type="button" class="cuisine-chip active" data-cuisine="all">🎲 おまかせ</button>
+          <button type="button" class="cuisine-chip ai-pick-chip" data-cuisine="厳選">✨ ハズレなし</button>
+          <button type="button" class="cuisine-chip" data-cuisine="定番和食">🍚 定番和食</button>
+          <button type="button" class="cuisine-chip" data-cuisine="丼もの">🥣 丼もの</button>
+          <button type="button" class="cuisine-chip" data-cuisine="ラーメン・麺類">🍜 麺類・ラーメン</button>
+          <button type="button" class="cuisine-chip" data-cuisine="洋食・パスタ">🍝 洋食・パスタ</button>
+          <button type="button" class="cuisine-chip" data-cuisine="カレー・エスニック">🍛 カレー・アジア</button>
+          <button type="button" class="cuisine-chip" data-cuisine="町中華">🥟 町中華</button>
+          <button type="button" class="cuisine-chip" data-cuisine="鍋・スープ">🍲 鍋・スープ</button>
+          <button type="button" class="cuisine-chip" data-cuisine="焼肉・ガッツリ">🥩 ガッツリ肉</button>
+          <button type="button" class="cuisine-chip" data-cuisine="韓国・アジア">🌶️ 韓国料理</button>
+          <button type="button" class="cuisine-chip" data-cuisine="軽食・ヘルシー">🥗 軽食・ヘルシー</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- スロットマシン抽選機 -->
+    <section class="slot-machine-section" id="slotMachineSection">
+      <div class="slot-frame" id="slotFrame">
+        <div class="slot-neon-ring" aria-hidden="true"></div>
+        <div class="slot-win-banner" id="slotWinBanner">✨ 今日のごはん決定！ ✨</div>
+
+        <div class="slot-lights">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+
+        <div class="slot-window" id="slotWindow">
+          <div class="slot-fade-top"></div>
+          <div class="slot-speed-lines" id="slotSpeedLines"></div>
+          <div class="slot-win-rays" id="slotWinRays"></div>
+          <div class="slot-flash-sweep" id="slotFlashSweep"></div>
+          <div class="slot-center-highlight">
+            <div class="slot-pointer left">▶</div>
+            <div class="slot-pointer right">◀</div>
+          </div>
+          <div class="slot-shockwave" id="slotShockwave"></div>
+          <div class="slot-shockwave slot-shockwave-2" id="slotShockwave2"></div>
+          <div class="slot-reel" id="slotReel">
+            <div class="reel-card">
+              <div class="dish-emoji">🎰</div>
+              <div class="dish-name-wrap">
+                <div class="dish-name">ガチャを回そう！</div>
+              </div>
+              <div class="dish-badges">
+                <span class="badge badge-cuisine">条件を選んで</span>
+                <span class="badge badge-mode">下のボタンをタップ</span>
+                <span class="badge badge-flavor">一瞬で決まる</span>
+              </div>
+            </div>
+          </div>
+          <div class="slot-fade-bottom"></div>
+        </div>
+      </div>
+
+      <!-- ガチャメインボタン -->
+      <div class="draw-action-bar">
+        <button type="button" id="btnDraw" class="draw-btn">
+          <span class="draw-btn-shine"></span>
+          <span class="draw-btn-icon">🎰</span>
+          <span class="draw-btn-text">ガチャを回す！</span>
+        </button>
+      </div>
+
+      <!-- 固定高さアクションドック -->
+      <div class="result-dock" id="resultDock">
+        <div class="dock-layer active" id="dockIdle">
+          <div class="dock-placeholder">
+            <span class="dock-placeholder-icon">✨</span>
+            <span id="dockIdleText">条件を選んで「ガチャを回す」を押すと、レシピや周辺のお店をチェックできます</span>
+          </div>
+        </div>
+        <div class="dock-layer" id="dockResult">
+          <div id="resultActionContent" class="result-action-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 今日の抽選履歴バー -->
+    <section id="historySection" class="history-section">
+      <div class="history-header">
+        <span class="history-title">今日の履歴</span>
+        <span class="history-hint">タップで切り替えできます</span>
+      </div>
+      <div class="history-list" id="historyList">
+        <span class="history-empty">まだ履歴がありません · 当たった料理がここに並びます</span>
+      </div>
+    </section>
+  </main>
+
+  <!-- ページ内レシピ＆周辺店舗詳細モーダル -->
+  <div id="recipeModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span id="modalEmoji" class="modal-emoji">🍲</span>
+          <div class="modal-title-wrap">
+            <h2 id="modalDishName" class="modal-title">料理名</h2>
+            <div id="modalTags" class="modal-subtags"></div>
+          </div>
+        </div>
+        <button type="button" id="btnCloseModal" class="modal-close" title="閉じる">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <!-- 日本向け周辺グルメAPI設定モーダル（Google Places星評価 / リクルート Hot Pepper） -->
+  <div id="sourceModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-card" style="max-width:500px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-emoji">📡</span>
+          <div class="modal-title-wrap">
+            <h2 class="modal-title">周辺グルメ検索ソース設定</h2>
+            <div class="modal-subtags">
+              <span class="badge badge-cuisine" id="sourceStatusBadge">現在：キー不要モード</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="btnCloseSourceModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="source-note">
+          APIキーは<strong>お使いのブラウザ内（localStorage）のみに保存</strong>され、外部サーバーへは送信されません。設定すると周辺の<strong>実店舗名やGoogle星評価</strong>を直接ガチャで引けます：
+        </div>
+
+        <div class="source-field-card">
+          <div class="source-field-head">
+            <span>🌍 Google Maps JS API キー（おすすめ）</span>
+            <span class="badge badge-rating">⭐ Google星評価・口コミ数表示</span>
+          </div>
+          <input type="text" id="googleKeyInput" class="source-input" placeholder="Google Maps API Key（Places API New 有効）を貼り付け" />
+        </div>
+
+        <div class="source-field-card">
+          <div class="source-field-head">
+            <span>🇯🇵 ホットペッパーグルメ API キー（完全無料・クレカ不要）</span>
+            <span class="badge badge-mode">全国十数万店舗に対応</span>
+          </div>
+          <input type="text" id="hotpepperKeyInput" class="source-input" placeholder="リクルート Hot Pepper Webサービス API Key を貼り付け" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btnSaveSource" class="action-link-btn primary-action">💾 保存して周辺を再検索</button>
+        <button type="button" id="btnResetSource" class="action-link-btn">🔄 キーを消去して標準に戻す</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 完全オフライン食の好みカルテモーダル -->
+  <div id="tasteModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-card" style="max-width:540px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-emoji">📊</span>
+          <div class="modal-title-wrap">
+            <h2 class="modal-title">あなたの食の好みカルテ</h2>
+            <div class="modal-subtags">
+              <span class="badge badge-cuisine">🔒 完全オフライン・ブラウザ内保存</span>
+              <span class="badge badge-mode" id="tasteCountBadge">記録 0 件</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="btnCloseTasteModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="tasteModalBody"></div>
+      <div class="modal-footer" style="grid-template-columns: repeat(3, 1fr);">
+        <button type="button" id="btnExportTaste" class="action-link-btn">📤 バックアップ保存</button>
+        <button type="button" id="btnImportTaste" class="action-link-btn">📥 データを復元</button>
+        <button type="button" id="btnClearTaste" class="action-link-btn" style="color:#fda4af;">🗑️ リセット</button>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="tasteImportFile" accept="application/json" style="display:none;" />
+
+  <script src="jp_dishes_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
