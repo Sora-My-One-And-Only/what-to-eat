@@ -1909,17 +1909,226 @@
     return { stage, heat, time, svgIcon };
   }
 
-  function splitIngredientAndAmount(raw) {
-    const str = String(raw || '').trim();
-    const calcMatch = str.match(/^(.+?)(?:的用量为|:|：|\s+)([0-9.\/~～\-一二三四五六七八九十半两]+\s*[a-zA-Z克千克斤两勺个只根片瓣块朵棵颗碗杯毫升升滴适量少许]+.*)$/);
-    if (calcMatch) {
-      return { name: calcMatch[1].trim(), amount: calcMatch[2].trim() };
+  // =========================================================================
+  // 8.0. 智能食材用量精准量化引擎（告别“少许/适量”，支持 1/2/4 人份实时换算）
+  // =========================================================================
+  const VAGUE_AMOUNT_REGEX = /^(?:适量|少许|少量|若干|一点点|一点|些许|适当|酌量|看着放|随意|个人口味|根据口味|按口味|按个人口味|根据喜好|一块|一小块|一把|一小把|一撮|一小撮|几片|几瓣|几粒|几根|几滴|几颗|半碗|一碗|少许调味|适量即可|少许即可)$/;
+
+  function estimateConcreteDosage(ingName, origAmount, dish) {
+    const n = String(ingName || '').trim();
+    const dName = `${dish?.name || ''} ${dish?.tag || ''}`;
+    const isSoup = /(汤|煲|炖|粥|焖|煮|火锅|冒菜|砂锅|老火)/.test(dName);
+    const isSweetSour = /(糖醋|红烧|卤|可乐|拔丝|蜜汁|鱼香|酸甜|甜)/.test(dName);
+    const isSourSpicy = /(酸辣|醋溜|凉拌|口水|糖醋|老醋|酸菜)/.test(dName);
+    const isFrying = /(炸|酥|煎|锅包|干煸|拔丝|烤)/.test(dName);
+    const isLittle = /(少许|少量|一点|些许|几滴|一撮)/.test(origAmount || '');
+
+    // 1. 煲汤滋补药材 & 干货（精准到克 + 直观参考）
+    if (/(枸杞)/.test(n)) return '10克 (约25粒)';
+    if (/(陈皮)/.test(n)) return '5克 (约1瓣)';
+    if (/(当归|黄芪|党参|太子参|人参|西洋参)/.test(n)) return '10克';
+    if (/(百合|莲子|茯苓|芡实|玉竹|沙参|麦冬|石斛|薏米|芡实|淮山干|干山药|莲藕干|海底椰|无花果干|南北杏)/.test(n)) {
+      return isLittle ? '12克 (约1小把)' : '15克 (约1小把)';
     }
-    const prefixMatch = str.match(/^([0-9.\/~～\-一二三四五六七八九十半两]+\s*(?:g|kg|ml|L|克|千克|斤|两|个|只|根|片|瓣|勺|大勺|小勺|汤匙|茶匙|块|朵|棵|颗|碗|杯|盒|条|袋|包)|适量|少许|半个|半根|一把|一碗)\s*(.+)$/i);
-    if (prefixMatch) {
-      return { name: prefixMatch[2].trim(), amount: prefixMatch[1].trim() };
+    if (/(红枣|黑枣|蜜枣|桂圆|龙眼)/.test(n)) return '5颗 (约20克)';
+    if (/(干香菇|干木耳|木耳|银耳|虫草花|竹荪|茶树菇|花菇|干贝|瑶柱)/.test(n)) return '15克 (干重)';
+    if (/(虾皮|紫菜|海带丝|海苔)/.test(n)) return '10克 (约1小把)';
+
+    // 2. 基础调味品（精确到克 / 毫升 + 家用餐勺：1小勺≈5g/5ml，1大勺≈15ml）
+    if (/(^盐$|食盐|精盐|海盐|细盐|岩盐|椒盐)/.test(n)) {
+      if (n.includes('椒盐')) return '3克 (约半小勺)';
+      if (isLittle) return '1.5克 (约1/3小勺)';
+      return isSoup ? '4克 (约半小勺)' : '3克 (约半小勺)';
     }
-    return { name: str, amount: '适量' };
+    if (/(鸡精|味精|鸡粉|松鲜鲜|蘑菇精|蔬之鲜)/.test(n)) return '2克 (约1/3小勺)';
+    if (/(冰糖)/.test(n)) return isSweetSour ? '20克 (约8颗)' : '10克 (约4颗)';
+    if (/(白糖|绵白糖|细砂糖|红糖|砂糖|代糖|^糖$)/.test(n)) {
+      if (isSweetSour) return '15克 (1大勺)';
+      return isLittle ? '3克 (约半小勺)' : '5克 (1小勺)';
+    }
+    if (/(老抽)/.test(n)) return isLittle ? '3ml (约半小勺)' : '5ml (1小勺)';
+    if (/(生抽|酱油|味极鲜|蒸鱼豉油|薄盐酱油|一品鲜)/.test(n)) {
+      return isLittle ? '8ml (半大勺)' : '15ml (1大勺)';
+    }
+    if (/(蚝油|耗油)/.test(n)) return isLittle ? '8克 (半大勺)' : '15克 (1大勺)';
+    if (/(料酒|黄酒|花雕|米酒|清酒|味淋|味霖)/.test(n)) {
+      return isLittle ? '8ml (半大勺)' : '15ml (1大勺)';
+    }
+    if (/(醋|陈醋|米醋|香醋|白醋|果醋)/.test(n)) {
+      if (isSourSpicy) return '25ml (约2大勺)';
+      return isLittle ? '5ml (1小勺)' : '10ml (2小勺)';
+    }
+    if (/(香油|芝麻油|花椒油|红油|辣椒油|藤椒油|葱油|蒜油)/.test(n)) return '5ml (1小勺)';
+    if (/(黄油|牛油)/.test(n)) return '15克 (约1小块)';
+    if (/(食用油|植物油|花生油|菜籽油|玉米油|橄榄油|色拉油|猪油|调和油|^油$)/.test(n)) {
+      if (isLittle) return '10ml (约2小勺)';
+      return isFrying ? '30ml (2大勺)' : '15ml (1大勺)';
+    }
+    if (/(豆瓣酱|郫县豆瓣|黄豆酱|甜面酱|沙茶酱|柱侯酱|叉烧酱|照烧酱|韩式辣酱|番茄酱|沙拉酱|蛋黄酱|芝麻酱|花生酱|黑椒酱|豆豉|老干妈)/.test(n)) {
+      return '15克 (1大勺)';
+    }
+    if (/(淀粉|玉米淀粉|生粉|红薯淀粉|土豆淀粉|太白粉|勾芡)/.test(n)) {
+      return isLittle ? '5克 (1小勺)' : '10克 (约1大勺)';
+    }
+    if (/(黑胡椒|白胡椒|胡椒粉|五香粉|十三香|孜然粉|孜然粒|辣椒粉|辣椒面|花椒粉|花椒面|咖喱粉|姜黄粉|肉桂粉|小苏打|泡打粉|酵母)/.test(n)) {
+      return '2克 (约1/3小勺)';
+    }
+    if (/(蜂蜜|炼乳|枫糖|糖浆)/.test(n)) return '15克 (1大勺)';
+    if (/(芝麻|白芝麻|黑芝麻)/.test(n)) return '5克 (1小勺)';
+    if (/(柠檬汁)/.test(n)) return '10ml (约半个柠檬)';
+
+    // 3. 葱姜蒜 & 辛香料
+    if (/(葱姜蒜|葱、姜、蒜)/.test(n)) return '葱2根+姜4片+蒜3瓣';
+    if (/(葱姜)/.test(n)) return '葱2根+姜4片';
+    if (/(葱结|小葱挽成结)/.test(n)) return '20克 (3根小葱)';
+    if (/(大葱|葱白|京葱)/.test(n)) return '30克 (约半根)';
+    if (/(葱花|小葱|香葱|葱末|葱段|^葱$)/.test(n)) return '15克 (约2根)';
+    if (/(生姜|老姜|子姜|姜片|姜丝|姜末|姜蓉|^姜$)/.test(n)) return '15克 (约4~5片)';
+    if (/(大蒜|蒜头|蒜瓣|蒜末|蒜片|蒜泥|蒜蓉|^蒜$)/.test(n)) return '15克 (约3~4瓣)';
+    if (/(香菜|芫荽)/.test(n)) return '15克 (约2棵)';
+    if (/(小米辣|小米椒|朝天椒|泰椒|指天椒)/.test(n)) return '3根 (约10克)';
+    if (/(干辣椒|辣椒段)/.test(n)) return '5个 (约5克)';
+    if (/(花椒|麻椒|青花椒)/.test(n)) return '3克 (约20粒)';
+    if (/(八角|大料)/.test(n)) return '2颗 (约3克)';
+    if (/(桂皮)/.test(n)) return '1小段 (约4克)';
+    if (/(香叶)/.test(n)) return '2~3片';
+    if (/(草果|白蔻|肉蔻|丁香|小茴香|山奈|良姜|砂仁|罗勒|迷迭香|百里香|欧芹|薄荷)/.test(n)) return '3克';
+
+    // 4. 液体类（水 / 高汤 / 奶 / 酒）
+    if (/(^水$|清水|开水|温水|冷水|热水|凉白开|纯净水|饮用水)/.test(n)) {
+      if (isLittle) return '50ml (约3大勺)';
+      return isSoup ? '700ml (约3碗)' : '80ml (约1/3碗)';
+    }
+    if (/(高汤|鸡汤|骨汤|昆布汤|出汁)/.test(n)) return '500ml (约2碗)';
+    if (/(牛奶|纯牛奶|淡奶油|椰浆|椰奶|豆浆)/.test(n)) return '150ml';
+    if (/(啤酒|可乐|雪碧)/.test(n)) return '330ml (1听)';
+
+    // 5. 蛋肉海鲜 & 豆制品
+    if (/(鹌鹑蛋)/.test(n)) return '8个 (约80克)';
+    if (/(皮蛋|松花蛋|咸鸭蛋)/.test(n)) return '2个';
+    if (/(鸡蛋|土鸡蛋|鸭蛋|^蛋$)/.test(n)) return '2个 (约100克)';
+    if (/(蛋黄|蛋清|蛋白)/.test(n)) return '1个';
+    if (/(五花肉|猪肉|里脊|梅花肉|瘦肉|肉末|肉馅|肉丝|肉片|排骨|牛肉|牛腩|肥牛|羊肉|鸡肉|鸡胸|鸡腿|鸡翅|鸭肉|猪蹄|猪肝|猪心|猪肚|肥肠|牛蛙)/.test(n)) {
+      return '250克';
+    }
+    if (/(鲈鱼|鲤鱼|草鱼|鲫鱼|鳊鱼|黄花鱼|昂刺鱼|多宝鱼|鲳鱼|带鱼|三文鱼|鳕鱼|巴沙鱼|鱼片|鱼块|鱼肉)/.test(n)) {
+      return /(鱼片|鱼块|鱼肉|三文鱼|鳕鱼|巴沙鱼)/.test(n) ? '250克' : '1条 (约500克)';
+    }
+    if (/(大虾|基围虾|明虾|虾仁|白虾|小龙虾|花蛤|文蛤|鱿鱼|墨鱼|鲍鱼|扇贝|生蚝|蟹|螃蟹)/.test(n)) {
+      return '200克';
+    }
+    if (/(午餐肉|火腿|培根|香肠|腊肠|腊肉|烤肠|肉丸|鱼丸|虾滑|蟹棒)/.test(n)) return '120克';
+    if (/(豆腐|嫩豆腐|老豆腐|内酯豆腐|千叶豆腐|豆干|香干|腐竹|千张|百叶|豆泡|油豆腐|面筋)/.test(n)) return '200克';
+
+    // 6. 蔬菜菌菇 & 主食粮谷
+    if (/(番茄|西红柿|土豆|马铃薯|洋葱|圆葱|黄瓜|青瓜|茄子|胡萝卜|白萝卜|青萝卜|苦瓜|丝瓜|西葫芦|青椒|红椒|彩椒|尖椒|线椒|杭椒|螺丝椒|玉米)/.test(n)) {
+      return /(青椒|红椒|尖椒|线椒|杭椒|螺丝椒)/.test(n) ? '2根 (约80克)' : '1个 (约150克)';
+    }
+    if (/(白菜|娃娃菜|青菜|油菜|上海青|生菜|菠菜|油麦菜|空心菜|芥蓝|菜心|韭菜|芹菜|豆角|四季豆|豇豆|包菜|卷心菜|圆白菜|西兰花|花菜|菜花|豆芽|绿豆芽|黄豆芽|冬瓜|南瓜|山药|莲藕|笋|芦笋|秋葵|豌豆|毛豆|蒜苔|蒜苗|莴笋)/.test(n)) {
+      return '200克';
+    }
+    if (/(香菇|平菇|金针菇|杏鲍菇|口蘑|白玉菇|蟹味菇|海鲜菇|猴头菇|茶树菇|鸡枞|菌)/.test(n)) return '120克';
+    if (/(面粉|中筋面粉|低筋面粉|高筋面粉|糯米粉|玉米面|粘米粉|面包糠|脆炸粉)/.test(n)) {
+      return /(饼|馒头|包子|饺子|面条|面包|蛋糕|发糕|窝头)/.test(dName) ? '200克' : '30克 (约2大勺)';
+    }
+    if (/(米饭|剩米饭)/.test(n)) return '1大碗 (约200克)';
+    if (/(大米|糯米|小米|黑米|燕麦|藜麦|红豆|绿豆|黄豆|黑豆|花生米|花生|核桃|腰果|松子)/.test(n)) {
+      return /(花生|核桃|腰果|松子)/.test(n) ? '30克 (约1小把)' : '100克';
+    }
+    if (/(面条|挂面|拉面|手擀面|乌冬|意面|通心粉|粉丝|粉条|宽粉|米粉|米线|河粉|年糕|饺子|馄饨|水饺)/.test(n)) {
+      return '150克';
+    }
+    if (/(芝士|奶酪|马苏里拉|芝士片)/.test(n)) return '40克 (约2片)';
+
+    // 7. 通用兜底（绝不输出抽象“适量/少许”）
+    return isLittle ? '5克 (约1小勺)' : '20克 (约1小把)';
+  }
+
+  function scaleAmountString(amountStr, factor) {
+    if (!factor || factor === 1) return amountStr;
+    return String(amountStr).replace(/(\d+)\/(\d+)|(\d+(?:\.\d+)?)/g, (match, num, den, dec) => {
+      if (num && den) {
+        const val = (parseFloat(num) / parseFloat(den)) * factor;
+        if (Math.abs(val - 1) < 0.08) return '1';
+        if (Math.abs(val - 0.5) < 0.08) return '1/2';
+        if (Math.abs(val - 2 / 3) < 0.08) return '2/3';
+        if (Math.abs(val - 1 / 3) < 0.08) return '1/3';
+        if (Math.abs(val - 0.25) < 0.06) return '1/4';
+        return String(Math.round(val * 10) / 10).replace(/\.0$/, '');
+      }
+      const val = parseFloat(dec);
+      if (isNaN(val)) return match;
+      const scaled = val * factor;
+      if (scaled >= 10) return String(Math.round(scaled));
+      const rounded = Math.round(scaled * 2) / 2;
+      return rounded === 0 ? '0.5' : String(rounded).replace(/\.0$/, '');
+    });
+  }
+
+  function splitIngredientAndAmount(raw, dish, scaleFactor = 1) {
+    let str = String(raw || '').trim();
+    // 清理上游偶发注释与残缺前缀（如 "克盐"、"勺料酒"、"片姜"、"小葱*注：..."）
+    str = str.replace(/\*注[:：].*$/, '').trim();
+
+    let name = str;
+    let amount = '';
+    let wasVague = false;
+
+    // 处理 "少许盐" / "适量生抽" / "少量鸡精调味" / "几滴柠檬汁" 等前缀模糊量词
+    const vaguePrefix = str.match(/^(适量|少许|少量|若干|一点点|一点|些许|适当|酌量|几滴|几片|几瓣|几粒|几根|几颗|一小把|一把|一小块|一块|一小撮|一撮)\s*(.+)$/);
+    if (vaguePrefix) {
+      amount = vaguePrefix[1].trim();
+      name = vaguePrefix[2].replace(/(调味|即可|左右)$/, '').trim();
+      wasVague = true;
+    } else {
+      // 处理残缺前缀单位（如 "克盐" -> 盐、"勺生抽" -> 生抽、"瓣蒜" -> 蒜）
+      const brokenUnitPrefix = str.match(/^[克勺片瓣个根粒滴段条棵]\s*([\u4e00-\u9fa5]{1,8})$/);
+      if (brokenUnitPrefix) {
+        name = brokenUnitPrefix[1].trim();
+        amount = '适量';
+        wasVague = true;
+      } else {
+        const calcMatch = str.match(/^(.+?)(?:的用量为|:|：|\s+)([0-9.\/~～\-一二三四五六七八九十半两]+\s*[a-zA-Z克千克斤两勺大勺小勺汤匙茶匙个只根片瓣块朵棵颗碗杯毫升升滴适量少许少量若干]+.*)$/);
+        const tailVagueMatch = str.match(/^(.+?)(?:[:：]|\s+|按照|根据)(适量|少许|少量|若干|一点点|一点|些许|适当|酌量|个人口味|口味加?|喜好.*|一块|一小块|一把|一小把|一撮|一小撮|几片|几瓣|几粒|几根|几滴|几颗)$/);
+        const prefixNumMatch = str.match(/^([0-9.\/~～\-一二三四五六七八九十半两]+\s*(?:g|kg|ml|L|克|千克|斤|两|个|只|根|片|瓣|勺|大勺|小勺|汤匙|茶匙|块|朵|棵|颗|碗|杯|盒|条|袋|包))\s*(.+)$/i);
+
+        if (tailVagueMatch) {
+          name = tailVagueMatch[1].trim();
+          amount = tailVagueMatch[2].trim();
+          wasVague = true;
+        } else if (calcMatch) {
+          name = calcMatch[1].trim();
+          amount = calcMatch[2].trim();
+          if (VAGUE_AMOUNT_REGEX.test(amount)) wasVague = true;
+        } else if (prefixNumMatch) {
+          amount = prefixNumMatch[1].trim();
+          name = prefixNumMatch[2].trim();
+          if (VAGUE_AMOUNT_REGEX.test(amount)) wasVague = true;
+        } else {
+          name = str;
+          amount = '适量';
+          wasVague = true;
+        }
+      }
+    }
+
+    // 如果仍是模糊词（少许/适量/一块/一把等），精准换算为具体克数/毫升/餐勺
+    if (wasVague || !amount || VAGUE_AMOUNT_REGEX.test(amount)) {
+      const concrete = estimateConcreteDosage(name, amount, dish);
+      return {
+        name: name || str,
+        amount: scaleAmountString(concrete, scaleFactor),
+        quantified: true,
+        origHint: amount && amount !== '适量' ? amount : '适量'
+      };
+    }
+
+    return {
+      name: name || str,
+      amount: scaleAmountString(amount, scaleFactor),
+      quantified: false,
+      origHint: ''
+    };
   }
 
   function highlightStepText(text) {
@@ -2027,8 +2236,11 @@
     return localSubstitutions.some(rule => rule.match.test(rawIng));
   }
 
-  function buildIllustratedRecipeHTML(dish) {
-    const ings = dish.ingredients || [];
+  function buildIllustratedRecipeHTML(dish, scaleFactor = 1) {
+    const ings = (dish.ingredients || []).filter(raw => {
+      const t = String(raw || '').trim();
+      return t && !/^#(主料|辅料|调料|食材)/.test(t);
+    });
     const steps = dish.steps || [];
     const tips = dish.tips || [];
     const images = dish.images || [];
@@ -2059,8 +2271,11 @@
 
     const ingredientsGridHTML = ings
       .map(rawIng => {
-        const { name, amount } = splitIngredientAndAmount(rawIng);
+        const { name, amount, quantified, origHint } = splitIngredientAndAmount(rawIng, dish, scaleFactor);
         const subMark = hasIngredientSub(rawIng) ? `<span class="ing-sub-dot" title="下方有本土平替方案">可平替</span>` : '';
+        const amountTitle = quantified
+          ? `title="原菜谱为「${origHint}」，已换算为具体家常用量（1小勺≈5g / 1大勺≈15ml）"`
+          : '';
         return `
         <div class="ing-check-item" role="button" tabindex="0">
           <div class="ing-check-left">
@@ -2068,7 +2283,7 @@
             <span class="ing-name">${name}</span>
             ${subMark}
           </div>
-          <span class="ing-amount">${amount}</span>
+          <span class="ing-amount ${quantified ? 'quantified' : ''}" ${amountTitle}>${amount}</span>
         </div>
       `;
       })
@@ -2152,10 +2367,15 @@
       </div>
 
       <div>
-        <div class="recipe-block-header">
-          <span class="recipe-block-title">🛒 必备食材与用量</span>
-          <span class="recipe-block-sub">点击卡片可勾选备菜进度</span>
+        <div class="recipe-block-header" style="flex-wrap:wrap;">
+          <span class="recipe-block-title">🛒 必备食材与精准用量</span>
+          <div class="serving-scale-bar" role="group" aria-label="切换分量人数">
+            <button type="button" class="serving-pill ${scaleFactor === 0.5 ? 'active' : ''}" data-scale="0.5">1人份</button>
+            <button type="button" class="serving-pill ${scaleFactor === 1 ? 'active' : ''}" data-scale="1">2人份</button>
+            <button type="button" class="serving-pill ${scaleFactor === 2 ? 'active' : ''}" data-scale="2">4人份</button>
+          </div>
         </div>
+        <div class="dosage-measure-hint">📏 已将抽象“少许/适量”细化为具体克数与勺量（1小勺≈5g / 1大勺≈15ml）· 点击食材可勾选</div>
         <div class="ing-checklist-grid">${ingredientsGridHTML}</div>
       </div>
 
@@ -2173,7 +2393,7 @@
     `;
   }
 
-  function bindRecipeInteractions(containerEl) {
+  function bindRecipeInteractions(containerEl, dish) {
     containerEl.querySelectorAll('.ing-check-item').forEach(item => {
       item.addEventListener('click', () => {
         playSelectSound();
@@ -2187,24 +2407,49 @@
         card.classList.toggle('step-done');
       });
     });
+
+    containerEl.querySelectorAll('.serving-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!dish) return;
+        const scale = parseFloat(btn.dataset.scale) || 1;
+        playSelectSound();
+        dish._servingScale = scale;
+        const prevScroll = containerEl.scrollTop;
+        containerEl.innerHTML = buildIllustratedRecipeHTML(dish, scale);
+        bindRecipeInteractions(containerEl, dish);
+        containerEl.scrollTop = prevScroll;
+      });
+    });
   }
 
   function copyRecipeToClipboard(dish) {
     playSelectSound();
     recordTasteSignal('copy', { item: dish });
+    const scale = dish._servingScale || 1;
+    const scaleLabel = scale === 0.5 ? '1人份' : scale === 2 ? '4人份' : '2人份';
+    const cleanIngs = (dish.ingredients || [])
+      .filter(raw => {
+        const t = String(raw || '').trim();
+        return t && !/^#(主料|辅料|调料|食材)/.test(t);
+      })
+      .map(raw => {
+        const { name, amount } = splitIngredientAndAmount(raw, dish, scale);
+        return `- ${name}：${amount}`;
+      });
+
     const lines = [
-      `【${dish.name} · 详细食谱】(${dish.cuisine} · ${dish.tag || '家常美味'})`,
+      `【${dish.name} · 详细食谱】(${dish.cuisine} · ${scaleLabel})`,
       `预计耗时：${dish.time || '约20分钟'} | 难度：${dish.difficulty || '★★★☆☆'}`,
       '',
-      '🛒 必备食材与用量：',
-      ...(dish.ingredients || []).map(i => `- ${i}`),
+      '🛒 必备食材与精准用量（1小勺≈5g，1大勺≈15ml）：',
+      ...cleanIngs,
       '',
       '⚡ 详细做法步骤：',
       ...(dish.steps || []).map((s, idx) => `${idx + 1}. ${s}`)
     ];
     navigator.clipboard
       .writeText(lines.join('\n'))
-      .then(() => showToast(`✅ 已复制「${dish.name}」食材与完整步骤清单`))
+      .then(() => showToast(`✅ 已复制「${dish.name}」(${scaleLabel}) 精准食材与步骤清单`))
       .catch(() => showToast(`✅ 已生成「${dish.name}」清单`));
   }
 
@@ -2219,9 +2464,10 @@
       <span class="badge badge-flavor">${dish.tag || '地道美味'}</span>
     `;
 
+    const currentScale = dish._servingScale || 1;
     modalBody.scrollTop = 0;
-    modalBody.innerHTML = buildIllustratedRecipeHTML(dish);
-    bindRecipeInteractions(modalBody);
+    modalBody.innerHTML = buildIllustratedRecipeHTML(dish, currentScale);
+    bindRecipeInteractions(modalBody, dish);
 
     modalFooter.innerHTML = `
       <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 复制完整食材与步骤</button>
@@ -2253,8 +2499,8 @@
           }
           dish._htcLoaded = true;
           if (recipeModal.classList.contains('open') && state.currentDish?.name === dish.name) {
-            modalBody.innerHTML = buildIllustratedRecipeHTML(dish);
-            bindRecipeInteractions(modalBody);
+            modalBody.innerHTML = buildIllustratedRecipeHTML(dish, dish._servingScale || 1);
+            bindRecipeInteractions(modalBody, dish);
           }
         }
       } catch (_) {}

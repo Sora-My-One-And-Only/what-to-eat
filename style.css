@@ -1563,6 +1563,50 @@ body[data-theme="dinner"] .sky-clouds {
   border-radius: 6px;
 }
 
+.ing-amount.quantified {
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.16);
+  border: 1px dashed rgba(251, 191, 36, 0.36);
+}
+
+.serving-scale-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 2px;
+}
+
+.serving-pill {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+
+.serving-pill:hover {
+  color: #fff;
+}
+
+.serving-pill.active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-end));
+  color: #fff;
+}
+
+.dosage-measure-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: -4px 0 9px;
+  opacity: 0.88;
+}
+
 .illustrated-steps-list {
   display: flex;
   flex-direction: column;
