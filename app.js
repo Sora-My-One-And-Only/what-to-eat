@@ -449,7 +449,6 @@
   // 2.5. 离线饮食习惯持久化引擎 (localStorage) + 个性化「猜你喜欢」推荐算法
   // =========================================================================
   const TASTE_STORAGE_KEY = 'food_rec_taste_v1';
-  const AI_CFG_STORAGE_KEY = 'food_rec_ai_cfg_v1';
 
   const FLAVOR_DIMENSIONS = [
     { key: '麻辣鲜香', regex: /(麻|辣|川|湘|剁椒|水煮|麻辣|红油|泡椒|藤椒|酸辣|香锅|火锅|冒菜|担担|口水)/ },
@@ -473,9 +472,7 @@
       flavorScores: {},
       likedItems: [],
       dislikedItems: [],
-      recentHistory: [],
-      aiAnalysisText: '',
-      aiAnalysisTime: ''
+      recentHistory: []
     };
   }
 
@@ -2440,23 +2437,8 @@
   }
 
   // =========================================================================
-  // 8.5. 离线饮食习惯画像 & 在线 AI 深度饮食分析弹窗
+  // 8.5. 纯离线本地饮食习惯画像与分析弹窗（零网络上传，断网可用）
   // =========================================================================
-  function loadAIConfig() {
-    try {
-      const raw = localStorage.getItem(AI_CFG_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '' };
-    } catch (_) {
-      return { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '' };
-    }
-  }
-
-  function saveAIConfig(cfg) {
-    try {
-      localStorage.setItem(AI_CFG_STORAGE_KEY, JSON.stringify(cfg));
-    } catch (_) {}
-  }
-
   function computeOfflinePersona() {
     const topC = getTopEntries(tasteProfile.cuisineScores, 3);
     const topF = getTopEntries(tasteProfile.flavorScores, 3);
@@ -2467,7 +2449,7 @@
     if (tasteProfile.totalInteractions < 3) {
       return {
         title: '🌱 美食口味探索新手',
-        desc: '你的离线饮食画像刚刚建立！多抽几次卡、点击查看食谱或在结果栏点 👍 / 👎，系统就会在本地自动学习你的口味偏好，绝不上传个人隐私。'
+        desc: '你的离线饮食画像刚刚建立！多抽几次卡、点击查看食谱或在结果栏点 👍 / 👎，系统就会在本地自动学习你的口味偏好，绝不上传任何数据。'
       };
     }
 
@@ -2485,28 +2467,44 @@
     return { title, desc };
   }
 
-  function buildTastePromptText() {
-    const topC = getTopEntries(tasteProfile.cuisineScores, 5).map(([k, v]) => `${k}(权重${v})`).join('、') || '暂无足够记录';
-    const topF = getTopEntries(tasteProfile.flavorScores, 5).map(([k, v]) => `${k}(权重${v})`).join('、') || '暂无足够记录';
-    const liked = tasteProfile.likedItems.slice(0, 12).map(x => x.name).join('、') || '暂无';
-    const disliked = tasteProfile.dislikedItems.slice(0, 12).map(x => x.name).join('、') || '暂无';
-    const recent = tasteProfile.recentHistory.slice(0, 15).map(x => `${x.name}(${x.cuisine})`).join('、') || '暂无';
+  function buildOfflineInsights() {
+    const insights = [];
+    const totalMeals = (tasteProfile.mealCounts.breakfast || 0) + (tasteProfile.mealCounts.lunch || 0) + (tasteProfile.mealCounts.dinner || 0);
+    const totalModes = Object.values(tasteProfile.modeCounts).reduce((a, b) => a + b, 0);
+    const topF = getTopEntries(tasteProfile.flavorScores, 3).map(([k]) => k);
 
-    return [
-      '请作为我的私人注册营养师和美食顾问，基于以下我的匿名离线饮食习惯数据，做一份简明实用的饮食分析报告：',
-      `- 累计抽选次数：${tasteProfile.totalDraws} 次（早餐 ${tasteProfile.mealCounts.breakfast} / 午餐 ${tasteProfile.mealCounts.lunch} / 晚餐 ${tasteProfile.mealCounts.dinner}）`,
-      `- 就餐方式分布：自己做 ${tasteProfile.modeCounts.cook} 次 / 懒人快手 ${tasteProfile.modeCounts.lazy} 次 / 点外卖 ${tasteProfile.modeCounts.takeout} 次`,
-      `- 最偏爱菜系 Top5：${topC}`,
-      `- 最偏爱口味维度 Top5：${topF}`,
-      `- 标记「喜欢 👍」的菜品：${liked}`,
-      `- 标记「不太想吃 👎」的菜品：${disliked}`,
-      `- 最近吃过/抽中的记录：${recent}`,
-      '',
-      '请用中文给出：',
-      '1. 【口味画像总结】一句话点出我的饮食性格',
-      '2. 【营养均衡提醒】指出可能偏重油盐/碳水或缺乏哪些膳食元素，给出温和可执行的改善建议',
-      '3. 【量身推荐3道新菜】兼顾我的口味偏好与健康平衡（注明适合早/午/晚哪一餐及一句话理由）'
-    ].join('\n');
+    if (tasteProfile.totalDraws < 3) {
+      insights.push('💡 抽卡满 3 次后，这里会自动生成你的本地饮食节奏与膳食均衡建议。');
+      insights.push('🔒 所有饮食习惯仅保存在当前浏览器本地，支持底部「导出备份」跨设备迁移。');
+      return insights;
+    }
+
+    if (totalMeals > 0) {
+      const bPct = Math.round(((tasteProfile.mealCounts.breakfast || 0) / totalMeals) * 100);
+      const lPct = Math.round(((tasteProfile.mealCounts.lunch || 0) / totalMeals) * 100);
+      const dPct = Math.max(0, 100 - bPct - lPct);
+      insights.push(`🕒 餐段分布：早餐 ${bPct}% · 午餐 ${lPct}% · 晚餐 ${dPct}%${bPct < 15 ? '（早餐抽选较少，记得按时吃早饭哦）' : ''}`);
+    }
+
+    if (totalModes > 0) {
+      const cookAll = (tasteProfile.modeCounts.cook || 0) + (tasteProfile.modeCounts.lazy || 0);
+      const takeoutPct = Math.round(((tasteProfile.modeCounts.takeout || 0) / totalModes) * 100);
+      if (takeoutPct >= 55) {
+        insights.push('🛵 近期点外卖比例偏高，偶尔切到「⚡ 懒人专区」做个10分钟快手菜会更省钱控油。');
+      } else if (cookAll > 0) {
+        insights.push(`🍳 自己下厨 / 懒人快手占比达 ${Math.round((cookAll / totalModes) * 100)}%，饮食规律又健康！`);
+      }
+    }
+
+    if (topF.includes('麻辣鲜香') || topF.includes('炙烤解馋')) {
+      insights.push('🥗 偏好重口/香辣/炙烤风味，建议穿插「粤港澳 / 江浙沪」清淡汤蔬换换胃口。');
+    } else if (topF.includes('面食碳水')) {
+      insights.push('🥩 碳水面食比例较高，搭配鸡蛋、豆制品或瘦肉蛋白会更扛饿。');
+    } else if (topF.includes('鲜美清淡')) {
+      insights.push('✨ 饮食偏清淡鲜美，结构很清爽，偶尔也可以来道酸甜或微辣菜开开胃。');
+    }
+
+    return insights;
   }
 
   function renderTasteModalContent() {
@@ -2514,7 +2512,7 @@
     const topC = getTopEntries(tasteProfile.cuisineScores, 5);
     const maxC = topC[0]?.[1] || 1;
     const topF = getTopEntries(tasteProfile.flavorScores, 6);
-    const aiCfg = loadAIConfig();
+    const insights = buildOfflineInsights();
 
     tasteCountBadge.textContent = `已记录 ${tasteProfile.totalInteractions} 次偏好`;
 
@@ -2543,11 +2541,7 @@
 
     const dislikedHTML = tasteProfile.dislikedItems.length > 0
       ? tasteProfile.dislikedItems.slice(0, 10).map(x => `<span class="taste-tag-pill disliked">👎 ${x.name}</span>`).join('')
-      : `<span style="font-size:12px;color:var(--text-muted);">暂无避开项</span>`;
-
-    const cachedAIHTML = tasteProfile.aiAnalysisText
-      ? `<div class="taste-ai-result" id="tasteAiResult">${tasteProfile.aiAnalysisText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
-      : `<div class="taste-ai-result" id="tasteAiResult" style="color:var(--text-muted);">可免费点击「📋 复制画像提示词」发给任意 AI，或填入你自己的 OpenAI 兼容接口（如 DeepSeek / OpenAI / OpenRouter）在本页一键生成深度营养与新菜建议（Key 仅存本地浏览器）。</div>`;
+      : '';
 
     tasteModalBody.innerHTML = `
       <div class="taste-persona-banner">
@@ -2585,111 +2579,21 @@
 
       <div class="taste-section-card">
         <div class="recipe-block-header" style="margin-bottom:2px;">
+          <span class="recipe-block-title">🧭 本地习惯洞察 & 均衡提醒</span>
+        </div>
+        <ul class="taste-insight-list">
+          ${insights.map(line => `<li>${line}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="taste-section-card">
+        <div class="recipe-block-header" style="margin-bottom:2px;">
           <span class="recipe-block-title">👍 喜欢 & 👎 避开清单</span>
         </div>
         <div class="taste-chip-wrap">${likedHTML}</div>
-        ${tasteProfile.dislikedItems.length > 0 ? `<div class="taste-chip-wrap" style="margin-top:4px;">${dislikedHTML}</div>` : ''}
-      </div>
-
-      <div class="taste-ai-box">
-        <div class="recipe-block-header" style="margin-bottom:2px;">
-          <span class="recipe-block-title" style="color:#d8b4fe;">🤖 在线 AI 深度饮食分析（可选增强）</span>
-          <span class="recipe-block-sub">仅发送匿名统计，不传定位</span>
-        </div>
-        <div class="taste-ai-config-grid">
-          <input type="text" id="aiBaseUrlInput" class="source-input" value="${aiCfg.baseUrl || ''}" placeholder="API 地址（如 https://api.deepseek.com/v1）" />
-          <input type="text" id="aiModelInput" class="source-input" value="${aiCfg.model || ''}" placeholder="模型名（如 deepseek-chat / gpt-4o-mini）" />
-        </div>
-        <input type="password" id="aiKeyInput" class="source-input" value="${aiCfg.apiKey || ''}" placeholder="可选：输入你自己的 API Key（仅存本机 localStorage）" />
-        <div class="action-btn-grid">
-          <button type="button" class="action-link-btn primary-action" id="btnRunOnlineAI">🤖 运行在线 AI 分析</button>
-          <button type="button" class="action-link-btn" id="btnCopyTastePrompt">📋 免Key复制画像提示词</button>
-        </div>
-        ${cachedAIHTML}
+        ${dislikedHTML ? `<div class="taste-chip-wrap" style="margin-top:4px;">${dislikedHTML}</div>` : ''}
       </div>
     `;
-
-    document.getElementById('btnCopyTastePrompt')?.addEventListener('click', () => {
-      playSelectSound();
-      const promptText = buildTastePromptText();
-      navigator.clipboard
-        .writeText(promptText)
-        .then(() => showToast('✅ 已复制饮食画像提示词，可直接发给任意 AI 分析'))
-        .catch(() => showToast('⚠️ 复制失败，请检查浏览器剪贴板权限'));
-    });
-
-    document.getElementById('btnRunOnlineAI')?.addEventListener('click', runOnlineAIAnalysis);
-  }
-
-  async function runOnlineAIAnalysis() {
-    const baseUrl = (document.getElementById('aiBaseUrlInput')?.value || '').trim().replace(/\/+$/, '');
-    const model = (document.getElementById('aiModelInput')?.value || '').trim() || 'deepseek-chat';
-    const apiKey = (document.getElementById('aiKeyInput')?.value || '').trim();
-    const resultEl = document.getElementById('tasteAiResult');
-    const runBtn = document.getElementById('btnRunOnlineAI');
-
-    saveAIConfig({ baseUrl, model, apiKey });
-
-    if (!baseUrl || !apiKey) {
-      showToast('💡 请先填入 API 地址与 Key，或点右侧「免Key复制画像提示词」');
-      return;
-    }
-
-    if (runBtn) {
-      runBtn.disabled = true;
-      runBtn.textContent = '⏳ AI 正在分析中...';
-    }
-    if (resultEl) {
-      resultEl.style.color = '#e2e8f0';
-      resultEl.textContent = '正在连接在线 AI 接口分析你的饮食画像与营养均衡度，请稍候...';
-    }
-
-    try {
-      const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: '你是一位专业、亲切的中文营养师与美食顾问。回答清晰分点，控制在350字以内。' },
-            { role: 'user', content: buildTastePromptText() }
-          ],
-          temperature: 0.7
-        })
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        throw new Error(`HTTP ${res.status} ${errText.slice(0, 80)}`);
-      }
-      const data = await res.json();
-      const reply = data?.choices?.[0]?.message?.content?.trim();
-      if (!reply) throw new Error('接口未返回有效分析文本');
-
-      tasteProfile.aiAnalysisText = reply;
-      tasteProfile.aiAnalysisTime = new Date().toLocaleString();
-      saveTasteProfile();
-
-      if (resultEl) {
-        resultEl.style.color = '#f1f5f9';
-        resultEl.textContent = reply;
-      }
-      showToast('✨ 在线 AI 深度饮食分析已完成并缓存在本地');
-    } catch (err) {
-      if (resultEl) {
-        resultEl.style.color = '#fda4af';
-        resultEl.textContent = `调用失败：${err.message}\n\n提示：部分模型接口可能受浏览器跨域(CORS)限制，你也可以直接点击上方「📋 免Key复制画像提示词」粘贴到任意 AI 对话中获得同样深度分析。`;
-      }
-    } finally {
-      if (runBtn) {
-        runBtn.disabled = false;
-        runBtn.textContent = '🤖 运行在线 AI 分析';
-      }
-    }
   }
 
   function openTasteModal() {

@@ -94,7 +94,7 @@
           <span id="guessStatusText" class="loc-text-ellipsis">猜你喜欢 · 正在基于你的本地饮食习惯智能匹配</span>
         </div>
         <div class="loc-actions">
-          <button type="button" class="loc-btn loc-auth-btn btn-open-taste" title="查看离线饮食画像与在线AI分析">📊 习惯画像 & 分析</button>
+          <button type="button" class="loc-btn loc-auth-btn btn-open-taste" title="查看我的离线本地饮食习惯画像">📊 饮食画像</button>
         </div>
       </div>
     </div>
@@ -311,16 +311,16 @@
     </div>
   </div>
 
-  <!-- 离线饮食习惯画像 & 在线 AI 深度分析弹窗 -->
+  <!-- 离线本地饮食习惯画像弹窗 -->
   <div id="tasteModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" style="max-width:560px;">
+    <div class="modal-card" style="max-width:540px;">
       <div class="modal-header">
         <div class="modal-title-group">
           <span class="modal-emoji">📊</span>
           <div class="modal-title-wrap">
-            <h2 class="modal-title">我的饮食习惯画像 & AI 分析</h2>
+            <h2 class="modal-title">我的饮食习惯画像</h2>
             <div class="modal-subtags">
-              <span class="badge badge-cuisine">🔒 离线本地加密存储于浏览器</span>
+              <span class="badge badge-cuisine">🔒 纯离线本地保存与分析</span>
               <span class="badge badge-mode" id="tasteCountBadge">已记录 0 次偏好</span>
             </div>
           </div>
@@ -328,7 +328,7 @@
         <button type="button" id="btnCloseTasteModal" class="modal-close">✕</button>
       </div>
       <div class="modal-body" id="tasteModalBody">
-        <!-- 动态渲染：偏好排行条形图 + 收藏/拉黑统计 + 在线AI深度分析区 -->
+        <!-- 动态渲染：饮食人格 + 偏好排行条形图 + 离线营养习惯洞察 + 喜欢/避开清单 -->
       </div>
       <div class="modal-footer" style="grid-template-columns: repeat(3, 1fr);">
         <button type="button" id="btnExportTaste" class="action-link-btn">📤 导出备份</button>
