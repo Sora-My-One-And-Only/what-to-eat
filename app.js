@@ -1784,6 +1784,13 @@
     });
   }
 
+  function getBiliVideoUrl(dish) {
+    if (dish && dish.bv) {
+      return `https://www.bilibili.com/video/${encodeURIComponent(dish.bv)}`;
+    }
+    return `https://search.bilibili.com/all?keyword=${encodeURIComponent(`${dish?.name || ''} 做法`)}`;
+  }
+
   function renderResultDock(item) {
     const isShopOrTakeout = item.isRealShop || (item.modes?.includes('takeout') && !item.modes?.includes('cook'));
 
@@ -1791,6 +1798,9 @@
       const modeIcon = state.mode === 'guess' ? '❤️' : (state.mode === 'lazy' ? '⚡' : '🍳');
       const matchedSubs = getDishSubstitutions(item.ingredients || []);
       const subBadgeText = matchedSubs.length > 0 ? ` · ${matchedSubs.length}项平替` : '';
+      const videoUrl = getBiliVideoUrl(item);
+      const videoLabel = item.bv ? '📺 B站原片' : '📺 视频教程';
+
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
           <span>${modeIcon} 「<strong>${item.name}</strong>」· ${item.time || '约15分'}${subBadgeText}</span>
@@ -1798,17 +1808,24 @@
             ${buildFeedbackHTML(item)}
           </div>
         </div>
-        <div class="action-btn-grid">
+        <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenRecipeModal">
-            📖 查看图文食谱 & 平替
+            📖 图文食谱
           </button>
+          <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnOpenVideoQuick">
+            ${videoLabel}
+          </a>
           <button type="button" class="action-link-btn" id="btnCopyRecipeQuick">
-            📋 复制食材清单
+            📋 复制清单
           </button>
         </div>
       `;
 
       document.getElementById('btnOpenRecipeModal')?.addEventListener('click', () => openRecipeModal(item));
+      document.getElementById('btnOpenVideoQuick')?.addEventListener('click', () => {
+        playSelectSound();
+        recordTasteSignal('open_detail', { item });
+      });
       document.getElementById('btnCopyRecipeQuick')?.addEventListener('click', () => copyRecipeToClipboard(item));
       bindFeedbackEvents(item);
     } else {
@@ -2513,9 +2530,13 @@
     modalBody.innerHTML = buildIllustratedRecipeHTML(dish, currentScale);
     bindRecipeInteractions(modalBody, dish);
 
+    const videoUrl = getBiliVideoUrl(dish);
+    const videoBtnLabel = dish.bv ? '📺 看B站原版视频' : '📺 搜B站视频教程';
+    modalFooter.style.gridTemplateColumns = 'repeat(3, 1fr)';
     modalFooter.innerHTML = `
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 复制完整食材与步骤</button>
-      <button type="button" class="action-link-btn" id="btnModalDone">✅ 关闭食谱弹窗</button>
+      <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnModalVideo">${videoBtnLabel}</a>
+      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 复制食材步骤</button>
+      <button type="button" class="action-link-btn" id="btnModalDone">✅ 关闭弹窗</button>
     `;
 
     document.getElementById('btnModalCopy')?.addEventListener('click', () => copyRecipeToClipboard(dish));
@@ -2680,6 +2701,7 @@
       });
     });
 
+    modalFooter.style.gridTemplateColumns = '1fr 1fr';
     modalFooter.innerHTML = `
       <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 复制店名去外卖软件搜索</button>
       <button type="button" class="action-link-btn" id="btnModalDoneShop">✅ 关闭窗口</button>
