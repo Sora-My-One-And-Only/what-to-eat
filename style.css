@@ -1678,30 +1678,38 @@ body[data-theme="dinner"] .sky-clouds {
   border-color: rgba(34, 197, 94, 0.4);
 }
 
+.illustrated-step-card.step-clean-card {
+  align-items: flex-start;
+  padding: 12px 14px;
+  gap: 12px;
+}
+
 .step-num-col {
   flex-shrink: 0;
-  width: 44px;
-  border-radius: 11px;
-  background: linear-gradient(160deg, rgba(255, 152, 0, 0.16) 0%, rgba(20, 14, 12, 0.72) 100%);
-  border: 1px solid rgba(255, 179, 0, 0.28);
-  display: flex;
-  flex-direction: column;
+  width: 34px;
+  height: 34px;
+  margin-top: 1px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(255, 152, 0, 0.2), rgba(255, 87, 34, 0.14));
+  border: 1px solid rgba(255, 179, 0, 0.38);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
 }
 
 .step-big-num {
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 13.5px;
+  font-weight: 800;
   color: #fde68a;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 .step-check-mark {
   display: none;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 900;
+  line-height: 1;
   color: #86efac;
 }
 
