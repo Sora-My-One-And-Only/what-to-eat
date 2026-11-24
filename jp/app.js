@@ -1,5 +1,28 @@
 (function () {
-  const staticDishes = window.JP_DISHES_DATA || [];
+  // 旧細分化ジャンルを7大ジャンルへ統合し、世界の料理パック（JP_GLOBAL_RECIPES）と合流
+  function normalizeJpCuisine(item) {
+    const c = item.cuisine || '';
+    const n = item.name || '';
+    if (c === '定番和食' || c === '丼もの' || c === '鍋・スープ') return '和食・丼・鍋';
+    if (c === 'ラーメン・麺類') return '麺類・パスタ';
+    if (c === '洋食・パスタ') {
+      return /(パスタ|ナポリタン|ペペロン|カルボナーラ|ボロネーゼ|スパゲッティ)/.test(n) ? '麺類・パスタ' : '洋食・欧米料理';
+    }
+    if (c === '町中華') return '中華・台湾料理';
+    if (c === 'カレー・エスニック' || c === '韓国・アジア') return '韓国・エスニック';
+    if (c === '焼肉・ガッツリ') return 'ガッツリ肉・揚げ物';
+    if (c === '軽食・ヘルシー') return '軽食・朝ごはん・サラダ';
+    return c || '和食・丼・鍋';
+  }
+
+  const rawCombined = [...(window.JP_DISHES_DATA || []), ...(window.JP_GLOBAL_RECIPES || [])];
+  const seenNames = new Set();
+  const staticDishes = [];
+  for (const d of rawCombined) {
+    if (!d || !d.name || seenNames.has(d.name)) continue;
+    seenNames.add(d.name);
+    staticDishes.push({ ...d, cuisine: normalizeJpCuisine(d) });
+  }
   const jpSubstitutions = window.JP_SUBSTITUTIONS || [];
   const CARD_HEIGHT = 196;
 
@@ -605,80 +628,59 @@
   }
 
   // =========================================================================
-  // 4. 日本特化・周辺実店舗ジャンル分類＆マルチAPI検索エンジン
+  // 4. 日本特化・周辺実店舗ジャンル分類＆マルチAPI検索エンジン（7大ジャンル対応）
   // =========================================================================
   const jpShopClassifier = [
     {
-      cuisine: 'ラーメン・麺類',
+      cuisine: '麺類・パスタ',
       emoji: '🍜',
-      tag: '麺類・ラーメン',
-      combos: ['特製味玉ラーメン＋半ライス', '濃厚魚介つけ麺（並）', 'かけうどん＋かしわ天'],
-      regex: /(ラーメン|らーめん|拉麺|つけ麺|油そば|まぜそば|家系|二郎|一蘭|一風堂|天下一品|幸楽苑|日高屋|うどん|丸亀製麺|はなまる|そば|蕎麦|富士そば|ゆで太郎|パスタ|ramen|noodle|udon|soba)/i
+      tag: '麺類・パスタ',
+      combos: ['特製味玉ラーメン＋半ライス', '明太子パスタ＆サラダセット', 'かけうどん＋かしわ天'],
+      regex: /(ラーメン|らーめん|拉麺|つけ麺|油そば|まぜそば|家系|二郎|一蘭|一風堂|天下一品|幸楽苑|日高屋|うどん|丸亀製麺|はなまる|そば|蕎麦|富士そば|ゆで太郎|パスタ|五右衛門|鎌倉パスタ|ramen|noodle|udon|soba|pasta)/i
     },
     {
-      cuisine: '丼もの',
-      emoji: '🥣',
-      tag: '丼・ファスト和食',
-      combos: ['牛丼並盛＋みそ汁おしんこセット', 'ふわとろ親子丼', 'サクサクカツ丼'],
-      regex: /(吉野家|松屋|すき家|なか卯|牛丼|親子丼|カツ丼|かつや|天丼|てんや|海鮮丼|丼|donburi|beef_bowl)/i
-    },
-    {
-      cuisine: 'カレー・エスニック',
+      cuisine: '韓国・エスニック',
       emoji: '🍛',
-      tag: 'カレー・エスニック',
-      combos: ['ロースカツカレー', 'バターチキンカレー＆チーズナン', 'ガパオライス＆生春巻き'],
-      regex: /(カレー|CoCo壱|ココイチ|スープカレー|インド|ネパール|タイ|タイ料理|ベトナム|フォー|エスニック|curry|indian|thai|vietnamese)/i
+      tag: '韓国・カレー・アジア',
+      combos: ['ロースカツカレー', 'バターチキン＆チーズナン', 'スンドゥブチゲ・ビビンバ定食'],
+      regex: /(カレー|CoCo壱|ココイチ|スープカレー|インド|ネパール|タイ|タイ料理|ベトナム|フォー|エスニック|韓国|サムギョプサル|スンドゥブ|ビビンバ|チヂミ|ヤンニョム|タッカルビ|curry|indian|thai|vietnamese|korean)/i
     },
     {
-      cuisine: '町中華',
+      cuisine: '中華・台湾料理',
       emoji: '🥟',
-      tag: '町中華・中華',
-      combos: ['焼餃子＆炒飯セット', '麻婆豆腐定食', '油淋鶏＆ラーメンセット'],
+      tag: '中華・台湾料理',
+      combos: ['焼餃子＆炒飯セット', '麻婆豆腐定食', '油淋鶏＆小籠包セット'],
       regex: /(中華|餃子|王将|バーミヤン|四川|麻婆|担々|点心|飲茶|小籠包|台湾|魯肉飯|chinese)/i
     },
     {
-      cuisine: '韓国・アジア',
-      emoji: '🌶️',
-      tag: '韓国料理',
-      combos: ['スンドゥブチゲ定食', '石焼ビビンバ＆チヂミ', 'ヤンニョムチキンセット'],
-      regex: /(韓国|サムギョプサル|スンドゥブ|ビビンバ|チヂミ|ヤンニョム|タッカルビ|korean)/i
-    },
-    {
-      cuisine: '焼肉・ガッツリ',
+      cuisine: 'ガッツリ肉・揚げ物',
       emoji: '🥩',
       tag: '焼肉・とんかつ・肉',
       combos: ['カルビ＆ハラミ焼肉定食', 'ロースかつ定食', '特製からあげ定食'],
-      regex: /(焼肉|ホルモン|ステーキ|ハンバーグ|とんかつ|トンカツ|和幸|さぼてん|からあげ|からやま|から好し|焼鳥|焼き鳥|鳥貴族|串カツ|ケンタッキー|KFC|yakiniku|steak|tonkatsu|bbq)/i
+      regex: /(焼肉|ホルモン|ステーキ|とんかつ|トンカツ|和幸|さぼてん|からあげ|からやま|から好し|焼鳥|焼き鳥|鳥貴族|串カツ|ケンタッキー|KFC|yakiniku|steak|tonkatsu|bbq)/i
     },
     {
-      cuisine: '鍋・スープ',
-      emoji: '🍲',
-      tag: '鍋・しゃぶしゃぶ',
-      combos: ['しゃぶしゃぶ食べ放題・定食', '博多もつ鍋セット', '具だくさんスープ＆パン'],
-      regex: /(鍋|しゃぶしゃぶ|すき焼き|もつ鍋|ちゃんこ|おでん|スープストック|Soup Stock|hotpot|shabu)/i
-    },
-    {
-      cuisine: '洋食・パスタ',
+      cuisine: '洋食・欧米料理',
       emoji: '🍝',
-      tag: '洋食・ファミレス',
-      combos: ['ハンバーグ＆ライスセット', 'チーズバーガー＆ポテトセット', 'パスタ＆サラダランチ'],
-      regex: /(サイゼリヤ|ガスト|ジョナサン|デニーズ|ロイヤルホスト|びっくりドンキー|マクドナルド|モスバーガー|バーガーキング|サブウェイ|ドミノ|ピザーラ|イタリアン|フレンチ|洋食|オムライス|パスタ|ピザ|ハンバーガー|ファミレス|italian|french|burger|pizza|pasta)/i
+      tag: '洋食・イタリアン・欧米',
+      combos: ['ハンバーグ＆ライスセット', 'チーズバーガー＆ポテトセット', 'マルゲリータピザ＆サラダ'],
+      regex: /(サイゼリヤ|ガスト|ジョナサン|デニーズ|ロイヤルホスト|びっくりドンキー|マクドナルド|モスバーガー|バーガーキング|ドミノ|ピザーラ|イタリアン|フレンチ|洋食|オムライス|ピザ|ハンバーガー|ファミレス|ハンバーグ|メキシカン|タコス|italian|french|burger|pizza|mexican)/i
     },
     {
-      cuisine: '軽食・ヘルシー',
+      cuisine: '軽食・朝ごはん・サラダ',
       emoji: '🥪',
-      tag: 'カフェ・軽食',
+      tag: 'カフェ・軽食・サラダ',
       combos: ['サンドイッチ＆カフェセット', 'パワーサラダボウル', 'モーニングトーストセット'],
-      regex: /(サブウェイ|サラダ|サンドイッチ|ベーカリー|パン|コメダ|ベローチェ|サンマルク|sandwich|salad|bakery)/i
+      regex: /(サブウェイ|サラダ|サンドイッチ|ベーカリー|パン|コメダ|ベローチェ|サンマルク|スープストック|Soup Stock|sandwich|salad|bakery)/i
     }
   ];
 
   function classifyNearbyShop(rawShop) {
     const combined = `${rawShop.name} ${rawShop.rawCuisine || ''} ${rawShop.rawType || ''} ${rawShop.brand || ''}`;
-    let matchedCuisine = '定番和食';
+    let matchedCuisine = '和食・丼・鍋';
     let emoji = '🍱';
-    let tag = '周辺の実店舗';
-    let combos = ['お店自慢の日替わりランチ定食', '定番人気メニュー1人前', 'テイクアウトおすすめセット'];
+    let tag = '和食・丼・定食';
+    let combos = ['お店自慢の日替わり和定食', '人気丼＋みそ汁セット', 'テイクアウトおすすめセット'];
 
     for (const rule of jpShopClassifier) {
       if (rule.regex.test(combined)) {
@@ -690,15 +692,19 @@
       }
     }
 
-    if (matchedCuisine === '定番和食') {
+    if (matchedCuisine === '和食・丼・鍋') {
       if (/(寿司|すし|鮨|スシロー|くら寿司|はま寿司|かっぱ寿司|回転寿司|sushi)/i.test(combined)) {
         emoji = '🍣';
         tag = '寿司・海鮮';
         combos = ['人気にぎり盛り合わせ', 'サーモン＆マグロ丼セット'];
-      } else if (/(大戸屋|やよい軒|定食|食堂|ほっともっと|弁当|おにぎり)/.test(combined)) {
-        emoji = '🍱';
-        tag = '和食・定食';
-        combos = ['焼き魚定食＋味噌汁', '鶏と野菜の黒酢あん定食'];
+      } else if (/(吉野家|松屋|すき家|なか卯|牛丼|親子丼|カツ丼|かつや|天丼|てんや|海鮮丼)/.test(combined)) {
+        emoji = '🥣';
+        tag = '丼もの';
+        combos = ['牛丼並盛＋みそ汁おしんこセット', 'ふわとろ親子丼・カツ丼'];
+      } else if (/(鍋|しゃぶしゃぶ|すき焼き|もつ鍋|おでん)/.test(combined)) {
+        emoji = '🍲';
+        tag = '鍋・しゃぶしゃぶ';
+        combos = ['一人しゃぶしゃぶセット', '博多もつ鍋・おでん盛り'];
       } else if (/(居酒屋|酒場|磯丸)/.test(combined)) {
         emoji = '🏮';
         tag = '居酒屋・和食';
@@ -2087,13 +2093,15 @@
 
     const favC = topC[0]?.[0] || 'バランス派';
     const favF = topF[0]?.[0] || '和風だし・あっさり';
-    let title = '🍽️ バランス重視のグルメ通';
-    if (favC === 'ラーメン・麺類') title = '🍜 無類の麺＆ラーメン愛食家';
-    else if (favC === '定番和食' || favF === '和風だし・あっさり') title = '🍚 お出汁と和食を愛する達人';
-    else if (favC === '焼肉・ガッツリ' || favF === 'こってり・ガッツリ') title = '🥩 ガッツリスタミナ派';
+    let title = '🍽️ 世界グルメも楽しむ食通タイプ';
+    if (favC === '麺類・パスタ') title = '🍜 無類の麺＆パスタ愛食家';
+    else if (favC === '和食・丼・鍋' || favF === '和風だし・あっさり') title = '🍚 お出汁と和食を愛する達人';
+    else if (favC === 'ガッツリ肉・揚げ物' || favF === 'こってり・ガッツリ') title = '🥩 ガッツリスタミナ派';
+    else if (favC === '洋食・欧米料理') title = '🍝 イタリアン＆洋食カフェ派';
+    else if (favC === '韓国・エスニック') title = '🌶️ スパイス＆アジア料理ハンター';
+    else if (favC === '中華・台湾料理') title = '🥟 町中華＆台湾グルメ通';
     else if (lazyPct >= 40) title = '⚡ レンチン＆時短ズボラ飯マスター';
     else if (takeoutPct >= 45) title = '🛵 外食・デリバリー開拓ハンター';
-    else if (favC === '洋食・パスタ') title = '🍝 洋食＆カフェごはん派';
 
     const desc = `特に <strong>${favC}</strong> と <strong>${favF}</strong> が好み。ズボラ飯比率 ${lazyPct}%・外食宅配比率 ${takeoutPct}%（累計 ${tasteProfile.totalDraws} 回記録・お気に入り ${tasteProfile.likedItems.length} 品）。`;
     return { title, desc };

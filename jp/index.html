@@ -181,26 +181,23 @@
         </div>
       </div>
 
-      <!-- STEP 3: 日本の食卓向け 3×4 ジャンルグリッド -->
+      <!-- STEP 3: 和洋中・世界料理まで広く網羅した 3×3 ジャンルグリッド -->
       <div class="step-card">
         <div class="step-label">
           <span class="step-num">3</span>
-          <span class="step-name">ジャンルを選ぶ</span>
+          <span class="step-name">ジャンルを選ぶ（和・洋・中・世界の料理）</span>
           <span class="pool-count" id="poolCount">候補 <b id="poolCountNum">--</b> 品</span>
         </div>
         <div class="cuisine-grid" id="cuisineGroup">
           <button type="button" class="cuisine-chip active" data-cuisine="all">🎲 おまかせ</button>
           <button type="button" class="cuisine-chip ai-pick-chip" data-cuisine="厳選">✨ ハズレなし</button>
-          <button type="button" class="cuisine-chip" data-cuisine="定番和食">🍚 定番和食</button>
-          <button type="button" class="cuisine-chip" data-cuisine="丼もの">🥣 丼もの</button>
-          <button type="button" class="cuisine-chip" data-cuisine="ラーメン・麺類">🍜 麺類・ラーメン</button>
-          <button type="button" class="cuisine-chip" data-cuisine="洋食・パスタ">🍝 洋食・パスタ</button>
-          <button type="button" class="cuisine-chip" data-cuisine="カレー・エスニック">🍛 カレー・アジア</button>
-          <button type="button" class="cuisine-chip" data-cuisine="町中華">🥟 町中華</button>
-          <button type="button" class="cuisine-chip" data-cuisine="鍋・スープ">🍲 鍋・スープ</button>
-          <button type="button" class="cuisine-chip" data-cuisine="焼肉・ガッツリ">🥩 ガッツリ肉</button>
-          <button type="button" class="cuisine-chip" data-cuisine="韓国・アジア">🌶️ 韓国料理</button>
-          <button type="button" class="cuisine-chip" data-cuisine="軽食・ヘルシー">🥗 軽食・ヘルシー</button>
+          <button type="button" class="cuisine-chip" data-cuisine="和食・丼・鍋">🍚 和食・丼・鍋</button>
+          <button type="button" class="cuisine-chip" data-cuisine="麺類・パスタ">🍜 麺類・パスタ</button>
+          <button type="button" class="cuisine-chip" data-cuisine="洋食・欧米料理">🍝 洋食・欧米料理</button>
+          <button type="button" class="cuisine-chip" data-cuisine="中華・台湾料理">🥟 中華・台湾料理</button>
+          <button type="button" class="cuisine-chip" data-cuisine="韓国・エスニック">🌶️ 韓国・エスニック</button>
+          <button type="button" class="cuisine-chip" data-cuisine="ガッツリ肉・揚げ物">🥩 ガッツリ肉</button>
+          <button type="button" class="cuisine-chip" data-cuisine="軽食・朝ごはん・サラダ">🥗 軽食・朝ごはん</button>
         </div>
       </div>
     </section>
@@ -366,6 +363,7 @@
   <input type="file" id="tasteImportFile" accept="application/json" style="display:none;" />
 
   <script src="jp_dishes_data.js"></script>
+  <script src="jp_global_recipes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
