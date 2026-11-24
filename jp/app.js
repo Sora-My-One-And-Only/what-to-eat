@@ -15,7 +15,12 @@
     return c || '和食・丼・鍋';
   }
 
-  const rawCombined = [...(window.JP_DISHES_DATA || []), ...(window.JP_GLOBAL_RECIPES || [])];
+  const rawCombined = [
+    ...(window.JP_DISHES_DATA || []),
+    ...(window.JP_GLOBAL_RECIPES || []),
+    ...(window.JP_EXPANDED_PACK || []),
+    ...(window.JP_EXPANDED_PACK_2 || [])
+  ];
   const seenNames = new Set();
   const staticDishes = [];
   for (const d of rawCombined) {
@@ -1513,6 +1518,10 @@
     });
   }
 
+  function getYouTubeRecipeUrl(dish) {
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${dish?.name || ''} レシピ 作り方`)}`;
+  }
+
   function renderResultDock(item) {
     const isShopOrTakeout = item.isRealShop || (item.modes?.includes('takeout') && !item.modes?.includes('cook'));
 
@@ -1520,21 +1529,29 @@
       const modeIcon = state.mode === 'guess' ? '❤️' : (state.mode === 'lazy' ? '⚡' : '🍳');
       const matchedSubs = getDishSubstitutions(item.ingredients || []);
       const subText = matchedSubs.length > 0 ? ` · 代用${matchedSubs.length}件` : '';
+      const ytUrl = getYouTubeRecipeUrl(item);
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
           <span>${modeIcon} 「<strong>${item.name}</strong>」· ${item.time || '約15分'}${subText}</span>
           <div class="dock-header-right">${buildFeedbackHTML(item)}</div>
         </div>
-        <div class="action-btn-grid">
+        <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenRecipeModal">
-            📖 レシピ＆代用ガイドを見る
+            📖 レシピを見る
           </button>
+          <a href="${ytUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnOpenYouTubeQuick">
+            📺 YouTube動画
+          </a>
           <button type="button" class="action-link-btn" id="btnCopyRecipeQuick">
-            📋 買い物リストをコピー
+            📋 買い物リスト
           </button>
         </div>
       `;
       document.getElementById('btnOpenRecipeModal')?.addEventListener('click', () => openRecipeModal(item));
+      document.getElementById('btnOpenYouTubeQuick')?.addEventListener('click', () => {
+        playSelectSound();
+        recordTasteSignal('open_detail', { item });
+      });
       document.getElementById('btnCopyRecipeQuick')?.addEventListener('click', () => copyRecipeToClipboard(item));
       bindFeedbackEvents(item);
     } else {
@@ -1904,8 +1921,11 @@
     modalBody.innerHTML = buildIllustratedRecipeHTML(dish, dish._servingScale || 1);
     bindRecipeInteractions(modalBody, dish);
 
+    const ytUrl = getYouTubeRecipeUrl(dish);
+    modalFooter.style.gridTemplateColumns = 'repeat(3, 1fr)';
     modalFooter.innerHTML = `
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 材料と作り方をコピー</button>
+      <a href="${ytUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnModalYouTube">📺 YouTube動画を見る</a>
+      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 買い物リストをコピー</button>
       <button type="button" class="action-link-btn" id="btnModalDone">✅ 閉じる</button>
     `;
     document.getElementById('btnModalCopy')?.addEventListener('click', () => copyRecipeToClipboard(dish));
@@ -2036,6 +2056,7 @@
       });
     });
 
+    modalFooter.style.gridTemplateColumns = '1fr 1fr';
     modalFooter.innerHTML = `
       <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 店名をコピー（Uber/マップ用）</button>
       <button type="button" class="action-link-btn" id="btnModalDoneShop">✅ 閉じる</button>
