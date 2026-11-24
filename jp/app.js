@@ -1778,11 +1778,12 @@
     const stepsListHTML = steps
       .map((stepText, idx) => {
         const vis = analyzeStepVisual(stepText, idx, steps.length);
+        const stepNumStr = String(idx + 1).padStart(2, '0');
         return `
-        <div class="illustrated-step-card" role="button" tabindex="0">
-          <div class="step-visual-box">
-            <div class="step-visual-svg">${vis.svgIcon}</div>
-            <div class="step-stage-name">${vis.stage}</div>
+        <div class="illustrated-step-card step-clean-card" role="button" tabindex="0">
+          <div class="step-num-col">
+            <span class="step-big-num">${stepNumStr}</span>
+            <span class="step-check-mark">✓</span>
           </div>
           <div class="step-content-col">
             <div class="step-top-bar">
@@ -1922,14 +1923,14 @@
     bindRecipeInteractions(modalBody, dish);
 
     const ytUrl = getYouTubeRecipeUrl(dish);
+    const cookpadUrl = `https://cookpad.com/jp/search/${encodeURIComponent(dish.name)}`;
     modalFooter.style.gridTemplateColumns = 'repeat(3, 1fr)';
     modalFooter.innerHTML = `
-      <a href="${ytUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnModalYouTube">📺 YouTube動画を見る</a>
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 買い物リストをコピー</button>
-      <button type="button" class="action-link-btn" id="btnModalDone">✅ 閉じる</button>
+      <a href="${cookpadUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn primary-action" id="btnModalCookpad">🔍 クックパッド検索</a>
+      <a href="${ytUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnModalYouTube">📺 YouTube動画</a>
+      <button type="button" class="action-link-btn" id="btnModalCopy">📋 買い物リスト</button>
     `;
     document.getElementById('btnModalCopy')?.addEventListener('click', () => copyRecipeToClipboard(dish));
-    document.getElementById('btnModalDone')?.addEventListener('click', closeRecipeModal);
 
     recipeModal.classList.add('open');
     recipeModal.setAttribute('aria-hidden', 'false');

@@ -1678,6 +1678,46 @@ body[data-theme="dinner"] .sky-clouds {
   border-color: rgba(34, 197, 94, 0.4);
 }
 
+.step-num-col {
+  flex-shrink: 0;
+  width: 44px;
+  border-radius: 11px;
+  background: linear-gradient(160deg, rgba(255, 152, 0, 0.16) 0%, rgba(20, 14, 12, 0.72) 100%);
+  border: 1px solid rgba(255, 179, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.step-big-num {
+  font-size: 16px;
+  font-weight: 900;
+  color: #fde68a;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-check-mark {
+  display: none;
+  font-size: 16px;
+  font-weight: 900;
+  color: #86efac;
+}
+
+.illustrated-step-card.step-done .step-num-col {
+  background: rgba(34, 197, 94, 0.22);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.illustrated-step-card.step-done .step-big-num {
+  display: none;
+}
+
+.illustrated-step-card.step-done .step-check-mark {
+  display: inline;
+}
+
 .step-visual-box {
   flex-shrink: 0;
   width: 86px;

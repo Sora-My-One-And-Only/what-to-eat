@@ -1784,11 +1784,35 @@
     });
   }
 
+  function getOriginalRecipeUrl(dish) {
+    if (dish && dish.recipePath) {
+      const encodedPath = dish.recipePath.split('/').map(encodeURIComponent).join('/');
+      return {
+        url: `https://github.com/Anduin2017/HowToCook/blob/master/${encodedPath}`,
+        isOriginal: true,
+        label: '📖 原版开源图文'
+      };
+    }
+    return {
+      url: `https://www.xiachufang.com/search/?keyword=${encodeURIComponent(dish?.name || '')}`,
+      isOriginal: false,
+      label: '🔍 搜下厨房图文'
+    };
+  }
+
   function getBiliVideoUrl(dish) {
     if (dish && dish.bv) {
-      return `https://www.bilibili.com/video/${encodeURIComponent(dish.bv)}`;
+      return {
+        url: `https://www.bilibili.com/video/${encodeURIComponent(dish.bv)}`,
+        isOriginal: true,
+        label: '📺 B站原版视频'
+      };
     }
-    return `https://search.bilibili.com/all?keyword=${encodeURIComponent(`${dish?.name || ''} 做法`)}`;
+    return {
+      url: `https://search.bilibili.com/all?keyword=${encodeURIComponent(`${dish?.name || ''} 做法`)}`,
+      isOriginal: false,
+      label: '🔍 搜B站视频'
+    };
   }
 
   function renderResultDock(item) {
@@ -1798,8 +1822,7 @@
       const modeIcon = state.mode === 'guess' ? '❤️' : (state.mode === 'lazy' ? '⚡' : '🍳');
       const matchedSubs = getDishSubstitutions(item.ingredients || []);
       const subBadgeText = matchedSubs.length > 0 ? ` · ${matchedSubs.length}项平替` : '';
-      const videoUrl = getBiliVideoUrl(item);
-      const videoLabel = item.bv ? '📺 B站原片' : '📺 视频教程';
+      const videoInfo = getBiliVideoUrl(item);
 
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
@@ -1810,10 +1833,10 @@
         </div>
         <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenRecipeModal">
-            📖 图文食谱
+            📖 查看食谱
           </button>
-          <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnOpenVideoQuick">
-            ${videoLabel}
+          <a href="${videoInfo.url}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnOpenVideoQuick">
+            ${videoInfo.label}
           </a>
           <button type="button" class="action-link-btn" id="btnCopyRecipeQuick">
             📋 复制清单
@@ -2374,11 +2397,12 @@
     const stepsListHTML = steps
       .map((stepText, idx) => {
         const vis = analyzeStepVisual(stepText, idx, steps.length);
+        const stepNumStr = String(idx + 1).padStart(2, '0');
         return `
-        <div class="illustrated-step-card" role="button" tabindex="0">
-          <div class="step-visual-box">
-            <div class="step-visual-svg">${vis.svgIcon}</div>
-            <div class="step-stage-name">${vis.stage}</div>
+        <div class="illustrated-step-card step-clean-card" role="button" tabindex="0">
+          <div class="step-num-col">
+            <span class="step-big-num">${stepNumStr}</span>
+            <span class="step-check-mark">✓</span>
           </div>
           <div class="step-content-col">
             <div class="step-top-bar">
@@ -2414,6 +2438,8 @@
         <div class="recipe-meta-pills">
           ${dish.aiPick ? `<span class="meta-pill" style="border-color:rgba(251,191,36,0.5);color:#fde68a;">✨ AI精选零翻车</span>` : ''}
           ${dish.lazyTool ? `<span class="meta-pill" style="border-color:rgba(192,132,252,0.5);color:#e9d5ff;">${dish.lazyTool}</span>` : ''}
+          ${dish.recipePath ? `<span class="meta-pill" style="border-color:rgba(56,189,248,0.5);color:#7dd3fc;">📖 含原版开源图文</span>` : ''}
+          ${dish.bv ? `<span class="meta-pill" style="border-color:rgba(251,114,153,0.5);color:#fbcfe8;">📺 含B站原版视频</span>` : ''}
           <span class="meta-pill">⏱️ ${time}</span>
           <span class="meta-pill">🔥 难度 ${difficulty}</span>
           <span class="meta-pill">🛒 食材 ${ings.length} 项</span>
@@ -2444,7 +2470,7 @@
 
       <div>
         <div class="recipe-block-header">
-          <span class="recipe-block-title">⚡ 分步图文详解</span>
+          <span class="recipe-block-title">⚡ 做法步骤详解</span>
           <span class="recipe-block-sub">点击步骤可标记完成</span>
         </div>
         <div class="illustrated-steps-list">${stepsListHTML}</div>
@@ -2530,17 +2556,16 @@
     modalBody.innerHTML = buildIllustratedRecipeHTML(dish, currentScale);
     bindRecipeInteractions(modalBody, dish);
 
-    const videoUrl = getBiliVideoUrl(dish);
-    const videoBtnLabel = dish.bv ? '📺 看B站原版视频' : '📺 搜B站视频教程';
+    const origRecipeInfo = getOriginalRecipeUrl(dish);
+    const videoInfo = getBiliVideoUrl(dish);
     modalFooter.style.gridTemplateColumns = 'repeat(3, 1fr)';
     modalFooter.innerHTML = `
-      <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnModalVideo">${videoBtnLabel}</a>
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopy">📋 复制食材步骤</button>
-      <button type="button" class="action-link-btn" id="btnModalDone">✅ 关闭弹窗</button>
+      <a href="${origRecipeInfo.url}" target="_blank" rel="noopener noreferrer" class="action-link-btn primary-action" id="btnModalOrigRecipe">${origRecipeInfo.label}</a>
+      <a href="${videoInfo.url}" target="_blank" rel="noopener noreferrer" class="action-link-btn video-action" id="btnModalVideo">${videoInfo.label}</a>
+      <button type="button" class="action-link-btn" id="btnModalCopy">📋 复制清单</button>
     `;
 
     document.getElementById('btnModalCopy')?.addEventListener('click', () => copyRecipeToClipboard(dish));
-    document.getElementById('btnModalDone')?.addEventListener('click', closeRecipeModal);
 
     recipeModal.classList.add('open');
     recipeModal.setAttribute('aria-hidden', 'false');
