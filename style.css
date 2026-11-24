@@ -1953,6 +1953,51 @@ body[data-theme="dinner"] .sky-clouds {
   border-radius: 99px;
 }
 
+.shop-jump-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .shop-jump-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.action-link-btn.map-action {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: #bbf7d0;
+}
+
+.action-link-btn.map-action:hover {
+  background: rgba(34, 197, 94, 0.28);
+  color: #fff;
+}
+
+.action-link-btn.meituan-action {
+  background: rgba(250, 204, 21, 0.18);
+  border-color: rgba(250, 204, 21, 0.5);
+  color: #fef08a;
+}
+
+.action-link-btn.meituan-action:hover {
+  background: rgba(250, 204, 21, 0.3);
+  color: #fff;
+}
+
+.action-link-btn.eleme-action {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #bae6fd;
+}
+
+.action-link-btn.eleme-action:hover {
+  background: rgba(14, 165, 233, 0.3);
+  color: #fff;
+}
+
 .source-note {
   font-size: 13px;
   line-height: 1.6;

@@ -2066,6 +2066,49 @@
     });
   }
 
+  function buildTakeoutLinks(item) {
+    const keyword = item.isRealShop ? item.name : (item.searchKeyword || item.name);
+    const inJapan = state.location.ready && isLikelyJapan(state.location.lat, state.location.lng, state.location.label);
+
+    if (inJapan) {
+      const q = encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : keyword);
+      return {
+        isChina: false,
+        mapLabel: '🗺️ Google地图',
+        mapUrl: `https://www.google.com/maps/search/?api=1&query=${q}`,
+        primaryDeliveryLabel: '🛵 Uber Eats',
+        primaryDeliveryUrl: `https://www.ubereats.com/jp/search?q=${encodeURIComponent(keyword)}`,
+        secondaryDeliveryLabel: '🍱 出前館',
+        secondaryDeliveryUrl: `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(keyword)}`
+      };
+    }
+
+    // 中国大陆：高德地图 URI API（手机自动唤起高德App，电脑直达高德网页标点）+ 美团外卖 + 饿了么搜索
+    let mapUrl = `https://ditu.amap.com/search?query=${encodeURIComponent(keyword)}`;
+    if (item.isRealShop && item.lat && item.lng) {
+      const pos = item.source === 'amap' ? { lat: item.lat, lng: item.lng } : wgs84ToGcj02(item.lat, item.lng);
+      mapUrl = `https://uri.amap.com/marker?position=${pos.lng.toFixed(6)},${pos.lat.toFixed(6)}&name=${encodeURIComponent(item.name)}&callnative=1`;
+    }
+
+    return {
+      isChina: true,
+      mapLabel: '🗺️ 高德地图',
+      mapUrl,
+      primaryDeliveryLabel: '🛵 美团外卖',
+      primaryDeliveryUrl: `https://i.meituan.com/s/?w=${encodeURIComponent(keyword)}`,
+      secondaryDeliveryLabel: '🔵 饿了么搜',
+      secondaryDeliveryUrl: `https://h5.ele.me/search/#keyword=${encodeURIComponent(keyword)}`
+    };
+  }
+
+  function silentCopyText(text, toastMsg) {
+    if (navigator.clipboard && text) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (toastMsg) showToast(toastMsg);
+      }).catch(() => {});
+    }
+  }
+
   function getOriginalRecipeUrl(dish) {
     if (dish && dish.recipePath) {
       const encodedPath = dish.recipePath.split('/').map(encodeURIComponent).join('/');
@@ -2139,6 +2182,7 @@
       const distBadge = item.isRealShop
         ? `${starText}${formatDistance(item.distance)}`
         : state.location.label;
+      const links = buildTakeoutLinks(item);
 
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
@@ -2149,32 +2193,26 @@
         </div>
         <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenShopModal">
-            🏪 看店铺与评价
+            🏪 店铺与下单
           </button>
-          <button type="button" class="action-link-btn" id="btnCopyShopQuick">
-            📋 复制店名
-          </button>
-          <button type="button" class="action-link-btn" id="btnExpandQuick">
-            🔭 扩至5km
-          </button>
+          <a href="${links.mapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnJumpMapQuick">
+            ${links.mapLabel}
+          </a>
+          <a href="${links.primaryDeliveryUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action" id="btnJumpDeliveryQuick">
+            ${links.primaryDeliveryLabel}
+          </a>
         </div>
       `;
 
       document.getElementById('btnOpenShopModal')?.addEventListener('click', () => openShopModal(item));
-      document.getElementById('btnCopyShopQuick')?.addEventListener('click', () => {
+      document.getElementById('btnJumpMapQuick')?.addEventListener('click', () => {
+        playSelectSound();
+        recordTasteSignal('open_detail', { item });
+      });
+      document.getElementById('btnJumpDeliveryQuick')?.addEventListener('click', () => {
         playSelectSound();
         recordTasteSignal('copy', { item });
-        navigator.clipboard
-          .writeText(copyTarget)
-          .then(() => showToast(`✅ 已复制「${copyTarget}」，可去外卖软件搜索下单`))
-          .catch(() => showToast(`✅ 店铺名：${copyTarget}`));
-      });
-      document.getElementById('btnExpandQuick')?.addEventListener('click', () => {
-        playSelectSound();
-        state.radius = 5000;
-        radiusSelect.value = '5000';
-        scanNearbyShops(true);
-        showToast('📡 已扩大范围至 5km 重新扫描周边店铺');
+        silentCopyText(copyTarget, `✅ 已同步复制「${copyTarget}」，可直接粘贴搜索下单`);
       });
       bindFeedbackEvents(item);
     }
@@ -2995,8 +3033,40 @@
         ? `<div class="recruit-credit">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener noreferrer">ホットペッパーグルメ Webサービス</a></div>`
         : '';
 
+    const links = buildTakeoutLinks(item);
+    const jumpBarHTML = `
+      <div>
+        <div class="recipe-block-header" style="margin-bottom:8px;">
+          <span class="recipe-block-title">🚀 一键直达地图 / 外卖软件搜索</span>
+          <span class="recipe-block-sub">点击跳转时自动复制店名</span>
+        </div>
+        <div class="shop-jump-bar">
+          <a href="${links.mapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnModalJumpMap">${links.mapLabel}</a>
+          <a href="${links.primaryDeliveryUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action" id="btnModalJumpPrimary">${links.primaryDeliveryLabel}</a>
+          <a href="${links.secondaryDeliveryUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn eleme-action" id="btnModalJumpSecondary">${links.secondaryDeliveryLabel}</a>
+          <button type="button" class="action-link-btn" id="btnModalCopyInline">📋 复制店名</button>
+        </div>
+      </div>
+    `;
+
     modalBody.scrollTop = 0;
-    modalBody.innerHTML = heroHTML + directoryHTML + recruitCreditHTML;
+    modalBody.innerHTML = heroHTML + jumpBarHTML + directoryHTML + recruitCreditHTML;
+
+    document.getElementById('btnModalJumpPrimary')?.addEventListener('click', () => {
+      playSelectSound();
+      recordTasteSignal('copy', { item });
+      silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」，正在打开外卖搜索`);
+    });
+    document.getElementById('btnModalJumpSecondary')?.addEventListener('click', () => {
+      playSelectSound();
+      recordTasteSignal('copy', { item });
+      silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」，正在打开外卖搜索`);
+    });
+    document.getElementById('btnModalCopyInline')?.addEventListener('click', () => {
+      playSelectSound();
+      recordTasteSignal('copy', { item });
+      silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」`);
+    });
 
     modalBody.querySelectorAll('.nearby-shop-row').forEach(row => {
       row.addEventListener('click', () => {

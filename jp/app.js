@@ -1571,6 +1571,8 @@
       const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
       const starText = item.rating ? `⭐${item.rating} · ` : '';
       const distBadge = item.isRealShop ? `${starText}${formatDistance(item.distance)}` : state.location.label;
+      const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : copyTarget)}`;
+      const uberUrl = `https://www.ubereats.com/jp/search?q=${encodeURIComponent(copyTarget)}`;
 
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
@@ -1579,31 +1581,21 @@
         </div>
         <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenShopModal">
-            🏪 店舗＆周辺一覧
+            🏪 店舗＆注文
           </button>
-          <button type="button" class="action-link-btn" id="btnCopyShopQuick">
-            📋 店名をコピー
-          </button>
-          <button type="button" class="action-link-btn" id="btnExpandQuick">
-            🔭 5kmに拡大
-          </button>
+          <a href="${gmapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnJpMapQuick">
+            🗺️ Googleマップ
+          </a>
+          <a href="${uberUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action" id="btnJpUberQuick">
+            🛵 Uber Eats
+          </a>
         </div>
       `;
       document.getElementById('btnOpenShopModal')?.addEventListener('click', () => openShopModal(item));
-      document.getElementById('btnCopyShopQuick')?.addEventListener('click', () => {
+      document.getElementById('btnJpUberQuick')?.addEventListener('click', () => {
         playSelectSound();
         recordTasteSignal('copy', { item });
-        navigator.clipboard
-          .writeText(copyTarget)
-          .then(() => showToast(`✅ 「${copyTarget}」をコピーしました（Uber Eats・出前館・マップ検索に）`))
-          .catch(() => showToast(`✅ 店名：${copyTarget}`));
-      });
-      document.getElementById('btnExpandQuick')?.addEventListener('click', () => {
-        playSelectSound();
-        state.radius = 5000;
-        radiusSelect.value = '5000';
-        scanNearbyShops(true);
-        showToast('📡 検索範囲を5kmに拡大して再検索します');
+        navigator.clipboard?.writeText(copyTarget).catch(() => {});
       });
       bindFeedbackEvents(item);
     }
@@ -2053,8 +2045,29 @@
         ? `<div class="recruit-credit">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener noreferrer">ホットペッパーグルメ Webサービス</a></div>`
         : '';
 
+    const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : copyTarget)}`;
+    const uberUrl = `https://www.ubereats.com/jp/search?q=${encodeURIComponent(copyTarget)}`;
+    const demaeUrl = `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(copyTarget)}`;
+    const jumpBarHTML = `
+      <div>
+        <div class="recipe-block-header" style="margin-bottom:8px;">
+          <span class="recipe-block-title">🚀 マップ・デリバリーで直接検索</span>
+        </div>
+        <div class="shop-jump-bar">
+          <a href="${gmapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action">🗺️ Googleマップ</a>
+          <a href="${uberUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action">🛵 Uber Eats</a>
+          <a href="${demaeUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn eleme-action">🍱 出前館</a>
+          <button type="button" class="action-link-btn" id="btnJpCopyInline">📋 店名コピー</button>
+        </div>
+      </div>
+    `;
+
     modalBody.scrollTop = 0;
-    modalBody.innerHTML = heroHTML + directoryHTML + recruitCreditHTML;
+    modalBody.innerHTML = heroHTML + jumpBarHTML + directoryHTML + recruitCreditHTML;
+    document.getElementById('btnJpCopyInline')?.addEventListener('click', () => {
+      playSelectSound();
+      navigator.clipboard?.writeText(copyTarget).then(() => showToast(`✅ 「${copyTarget}」をコピーしました`)).catch(() => {});
+    });
 
     modalBody.querySelectorAll('.nearby-shop-row').forEach(row => {
       row.addEventListener('click', () => {
