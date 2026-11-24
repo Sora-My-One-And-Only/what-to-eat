@@ -106,20 +106,15 @@
         </div>
       </div>
 
-      <!-- 外食・デリバリーモード（ブラウザ位置情報のみ・Google星評価 / Hot Pepper対応） -->
+      <!-- 外食・デリバリーモード（シンプル検索ジャンプ：位置情報はマップ・宅配アプリ側におまかせ） -->
       <div id="takeoutStatusLayer" class="status-layer">
         <div class="loc-left">
-          <span class="loc-dot" id="locDot"></span>
-          <span id="locText" class="loc-text-ellipsis">現在地の許可で周辺の実店舗を探します</span>
+          <span class="status-icon-badge">🛵</span>
+          <span class="loc-text-ellipsis">外食・宅配モード · 当たった料理をマップや宅配アプリでそのまま検索</span>
         </div>
         <div class="loc-actions">
-          <select id="radiusSelect" class="city-select" title="周辺検索の半径を選択">
-            <option value="1000">1km圏内</option>
-            <option value="3000" selected>3km圏内</option>
-            <option value="5000">5km圏内</option>
-          </select>
-          <button type="button" id="btnRelocate" class="loc-btn loc-auth-btn" title="ブラウザに位置情報の利用を許可">📍 現在地取得</button>
-          <button type="button" id="btnSourceConfig" class="loc-btn" title="Google Places（星評価）/ ホットペッパーAPI設定">⚙️</button>
+          <span class="status-right-tag">アプリ側で現在地検索</span>
+          <button type="button" class="loc-btn btn-open-taste" title="オフライン食の好み診断を見る">📊 好み診断</button>
         </div>
       </div>
 
@@ -290,49 +285,6 @@
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>
-    </div>
-  </div>
-
-  <!-- 日本向け周辺グルメAPI設定モーダル（Google Places星評価 / リクルート Hot Pepper） -->
-  <div id="sourceModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" style="max-width:500px;">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <span class="modal-emoji">📡</span>
-          <div class="modal-title-wrap">
-            <h2 class="modal-title">周辺グルメ検索ソース設定</h2>
-            <div class="modal-subtags">
-              <span class="badge badge-cuisine" id="sourceStatusBadge">現在：キー不要モード</span>
-            </div>
-          </div>
-        </div>
-        <button type="button" id="btnCloseSourceModal" class="modal-close">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="source-note">
-          APIキーは<strong>お使いのブラウザ内（localStorage）のみに保存</strong>され、外部サーバーへは送信されません。設定すると周辺の<strong>実店舗名やGoogle星評価</strong>を直接ガチャで引けます：
-        </div>
-
-        <div class="source-field-card">
-          <div class="source-field-head">
-            <span>🌍 Google Maps JS API キー（おすすめ）</span>
-            <span class="badge badge-rating">⭐ Google星評価・口コミ数表示</span>
-          </div>
-          <input type="text" id="googleKeyInput" class="source-input" placeholder="Google Maps API Key（Places API New 有効）を貼り付け" />
-        </div>
-
-        <div class="source-field-card">
-          <div class="source-field-head">
-            <span>🇯🇵 ホットペッパーグルメ API キー（完全無料・クレカ不要）</span>
-            <span class="badge badge-mode">全国十数万店舗に対応</span>
-          </div>
-          <input type="text" id="hotpepperKeyInput" class="source-input" placeholder="リクルート Hot Pepper Webサービス API Key を貼り付け" />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" id="btnSaveSource" class="action-link-btn primary-action">💾 保存して周辺を再検索</button>
-        <button type="button" id="btnResetSource" class="action-link-btn">🔄 キーを消去して標準に戻す</button>
-      </div>
     </div>
   </div>
 

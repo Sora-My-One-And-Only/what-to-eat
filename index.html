@@ -71,20 +71,15 @@
         </div>
       </div>
 
-      <!-- 点外卖状态层（纯浏览器授权定位，支持 Google Places 带星级 / 日本 Hot Pepper / 高德） -->
+      <!-- 点外卖状态层（极简跳转模式：抽中后一键带关键词跳地图/外卖App，由App自行定位） -->
       <div id="takeoutStatusLayer" class="status-layer">
         <div class="loc-left">
-          <span class="loc-dot" id="locDot"></span>
-          <span id="locText" class="loc-text-ellipsis">需要浏览器定位授权以查找周边实店</span>
+          <span class="status-icon-badge">🛵</span>
+          <span class="loc-text-ellipsis">外卖点餐模式 · 抽中后带关键词跳转地图 / 外卖软件搜周边</span>
         </div>
         <div class="loc-actions">
-          <select id="radiusSelect" class="city-select" title="选择外卖配送扫描范围">
-            <option value="1000">1km内</option>
-            <option value="3000" selected>3km内</option>
-            <option value="5000">5km内</option>
-          </select>
-          <button type="button" id="btnRelocate" class="loc-btn loc-auth-btn" title="向浏览器请求位置授权并刷新周边">📍 授权定位</button>
-          <button type="button" id="btnSourceConfig" class="loc-btn" title="配置 Google Places / 日本 Hot Pepper / 高德 API">⚙️</button>
+          <span class="status-right-tag">App自动定位</span>
+          <button type="button" class="loc-btn btn-open-taste" title="查看我的离线饮食习惯画像">📊 画像</button>
         </div>
       </div>
 
@@ -261,57 +256,6 @@
     </div>
   </div>
 
-  <!-- 外卖周边数据源设置弹窗（支持 Google Places 带真实星级 / 日本 Hot Pepper 免费库 / 高德 POI） -->
-  <div id="sourceModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" style="max-width:500px;">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <span class="modal-emoji">📡</span>
-          <div class="modal-title-wrap">
-            <h2 class="modal-title">全球 & 日本 / 中国周边数据源</h2>
-            <div class="modal-subtags">
-              <span class="badge badge-cuisine" id="sourceStatusBadge">当前：自动选择</span>
-            </div>
-          </div>
-        </div>
-        <button type="button" id="btnCloseSourceModal" class="modal-close">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="source-note">
-          所有 API Key <strong>仅保存在你自己的浏览器本地（localStorage）</strong>，绝不上传至任何服务器。填入对应 Key 后自动启用并展示<strong>真实店铺名与评价星级</strong>：
-        </div>
-
-        <div class="source-field-card">
-          <div class="source-field-head">
-            <span>🌍 Google Maps JS API Key（推荐 · 日本/全球通用）</span>
-            <span class="badge badge-flavor">⭐ 含真实Google星级</span>
-          </div>
-          <input type="text" id="googleKeyInput" class="source-input" placeholder="粘贴 Google Maps API Key（需开启 Places API (New)）" />
-        </div>
-
-        <div class="source-field-card">
-          <div class="source-field-head">
-            <span>🇯🇵 日本 Hot Pepper Gourmet Key（完全免费免绑卡）</span>
-            <span class="badge badge-mode">全日本十几万门店</span>
-          </div>
-          <input type="text" id="hotpepperKeyInput" class="source-input" placeholder="粘贴 Recruit Hot Pepper API Key（支持JSONP直连）" />
-        </div>
-
-        <div class="source-field-card">
-          <div class="source-field-head">
-            <span>🇨🇳 高德地图 Web服务 Key（中国大陆免费 5000次/月）</span>
-            <span class="badge badge-cuisine">⭐ 含国内商户评分</span>
-          </div>
-          <input type="text" id="amapKeyInput" class="source-input" placeholder="粘贴高德 Web服务 Key" />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" id="btnSaveSource" class="action-link-btn primary-action">💾 保存并立即扫描周边</button>
-        <button type="button" id="btnResetSource" class="action-link-btn">🔄 清空Key恢复默认</button>
-      </div>
-    </div>
-  </div>
-
   <!-- 离线本地饮食习惯画像弹窗 -->
   <div id="tasteModal" class="modal-backdrop" aria-hidden="true">
     <div class="modal-card" style="max-width:540px;">
@@ -342,7 +286,6 @@
 
   <script src="dishes_data.js"></script>
   <script src="ai_curated_data.js"></script>
-  <script src="city_shops_data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

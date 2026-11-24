@@ -144,33 +144,15 @@
   const staticDishes = [...processedAi, ...mergedBase];
   const CARD_HEIGHT = 196;
 
-  // 当前三步状态 + 周边实店扫描状态
+  // 当前三步状态
   const state = {
     meal: 'breakfast',   // 'breakfast' | 'lunch' | 'dinner'
     mode: 'cook',        // 'cook' | 'lazy' | 'takeout' | 'guess'
     cuisine: 'all',      // 'all' | 'AI精选' | specific cuisine name
-    radius: 3000,        // 1000 | 3000 | 5000 (meters)
-    googleKey: localStorage.getItem('food_rec_google_key') || '',
-    hotpepperKey: localStorage.getItem('food_rec_hotpepper_key') || '',
-    amapKey: localStorage.getItem('food_rec_amap_key') || '',
     isSpinning: false,
     currentDish: null,
     displayedPoolCount: 0,
-    history: [],
-    nearbyShops: [],
-    nearbySource: 'osm',
-    nearbyLoading: false,
-    nearbyScannedKey: '',
-    location: {
-      lat: null,
-      lng: null,
-      city: '',
-      district: '',
-      label: '当前位置',
-      ready: false,
-      denied: false,
-      locating: false
-    }
+    history: []
   };
 
   // 根据当前本地时间自动预设早/中/晚餐
@@ -209,11 +191,6 @@
   const dockIdleText = document.getElementById('dockIdleText');
   const dockResult = document.getElementById('dockResult');
   const resultActionContent = document.getElementById('resultActionContent');
-  const locDot = document.getElementById('locDot');
-  const locText = document.getElementById('locText');
-  const btnRelocate = document.getElementById('btnRelocate');
-  const btnSourceConfig = document.getElementById('btnSourceConfig');
-  const radiusSelect = document.getElementById('radiusSelect');
   const historyList = document.getElementById('historyList');
   const fxCanvas = document.getElementById('fxCanvas');
 
@@ -226,17 +203,7 @@
   const modalFooter = document.getElementById('modalFooter');
   const btnCloseModal = document.getElementById('btnCloseModal');
 
-  // 数据源设置弹窗 DOM
-  const sourceModal = document.getElementById('sourceModal');
-  const sourceStatusBadge = document.getElementById('sourceStatusBadge');
-  const googleKeyInput = document.getElementById('googleKeyInput');
-  const hotpepperKeyInput = document.getElementById('hotpepperKeyInput');
-  const amapKeyInput = document.getElementById('amapKeyInput');
-  const btnCloseSourceModal = document.getElementById('btnCloseSourceModal');
-  const btnSaveSource = document.getElementById('btnSaveSource');
-  const btnResetSource = document.getElementById('btnResetSource');
-
-  // 离线习惯画像 & 在线AI分析弹窗 DOM
+  // 离线习惯画像弹窗 DOM
   const tasteModal = document.getElementById('tasteModal');
   const tasteModalBody = document.getElementById('tasteModalBody');
   const tasteCountBadge = document.getElementById('tasteCountBadge');
@@ -806,595 +773,8 @@
   }
 
   // =========================================================================
-  // 3. 周边真实店铺智能自动菜系分类器 & 多引擎全球/日本/中国周边扫描
-  // =========================================================================
-  const shopCuisineClassifier = [
-    {
-      cuisine: '欧美西餐',
-      emoji: '🍔',
-      tag: '西式简餐',
-      combos: ['经典汉堡薯条可乐套餐', '意式肉酱面+烤翅套餐', '牛排轻食能量碗单人餐'],
-      regex: /(麦当劳|肯德基|KFC|McDonald|マクドナルド|モスバーガー|ケンタッキー|ハンバーガー|汉堡王|Burger|赛百味|Subway|必胜客|Pizza|ピザ|ピッツァ|达美乐|尊宝|乐凯撒|萨莉亚|Saizeriya|サイゼリヤ|ガスト|ジョナサン|デニーズ|ロイヤルホスト|蓝蛙|Blue Frog|Wagas|沃歌斯|塔斯汀|德克士|Dicos|华莱士|棒约翰|Papa John|西餐|洋食|イタリアン|フレンチ|パスタ|ステーキ|牛排|Steak|意面|Pasta|披萨|比萨|汉堡|三明治|Sandwich|轻食|沙拉|Salad|波奇|墨西哥|Taco|西班牙|法餐|法式|意式|俄式|德式|Paulaner|Hooters|米氏|Brunch|贝果|可颂|西点|烘焙|面包|ベーカリー)/i
-    },
-    {
-      cuisine: '日韩亚太',
-      emoji: '🍣',
-      tag: '日韩亚太',
-      combos: ['温泉蛋肥牛丼+味增汤套餐', '石锅拌饭/韩式炸鸡双拼', '豚骨拉面/冬阴功单人餐'],
-      regex: /(吉野家|食其家|すき家|松屋|なか卯|味千|一风堂|一兰|一蘭|天下一品|幸楽苑|丸亀製麺|はなまる|スシロー|くら寿司|はま寿司|かっぱ寿司|CoCo壱|ココイチ|大戸屋|やよい軒|かつや|和幸|てんや|鳥貴族|磯丸水産|寿司|すし|鮨|Sushi|刺身|日料|日本料理|和食|居酒屋|焼鳥|焼き鳥|烧鸟|寿喜|しゃぶ|すき焼き|乌冬|うどん|そば|蕎麦|拉面|ラーメン|らーめん|つけ麺|油そば|とんかつ|トンカツ|牛丼|親子丼|海鮮丼|定食|天ぷら|お好み焼き|たこ焼き|もんじゃ|鳗鱼|うなぎ|天妇罗|和牛|焼肉|ホルモン|丼|beef_bowl|japanese|韩|韩国|韩式|韓国|サムギョプサル|スンドゥブ|烤肉|石锅|拌饭|部队锅|炸鸡|紫菜包饭|冷面|朝鲜|延边|korean|泰|泰国|タイ|冬阴功|越南|ベトナム|フォー|河粉|新加坡|海南鸡|肉骨茶|东南亚|印度|インド|ネパール|カレー|咖喱|thai|vietnamese|indian|asian)/i
-    },
-    {
-      cuisine: '川渝菜',
-      emoji: '🌶️',
-      tag: '麻辣川渝',
-      combos: ['招牌川味双拼工作餐', '酸菜鱼/冒菜单人豪华套餐', '重庆小面/红油抄手套餐'],
-      regex: /(川|蜀|渝|重庆|成都|四川|麻婆|担々麺|麻辣|sichuan|海底捞|太二|鱼你在一起|乡村基|大米先生|冒菜|三顾冒菜|串串|钵钵鸡|麻辣烫|杨国福|张亮|麻辣香锅|酸菜鱼|水煮鱼|烤鱼|万州|毛血旺|担担面|小面|豌杂|抄手|酸辣粉|锅盔|锅魁|兔|跷脚牛肉|蹄花|自贡|乐山|宜宾|绵阳|干锅|牛蛙|蛙来哒|辣子鸡|回锅肉|火锅|hotpot)/i
-    },
-    {
-      cuisine: '粤港澳',
-      emoji: '🦐',
-      tag: '粤港风味',
-      combos: ['烧腊双拼饭+老火例汤', '广式肠粉/云吞面套餐', '隆江猪脚饭/腊味煲仔饭'],
-      regex: /(粤|广|港|広東|香港|飲茶|点心|茶餐厅|烧腊|烧鹅|烧鸭|叉烧|白切鸡|猪脚饭|隆江|煲仔饭|肠粉|早茶|点都德|陶陶居|翠华|太兴|避风塘|云吞|竹升面|潮汕|潮州|牛肉火锅|砂锅粥|顺德|客家|啫啫|猪肚鸡|海鲜|cantonese|hongkong|dim_sum|seafood)/i
-    },
-    {
-      cuisine: '湘鄂赣',
-      emoji: '🔥',
-      tag: '香辣下饭',
-      combos: ['现炒辣椒炒肉木桶饭', '热干面/长沙米粉套餐', '南昌拌粉+瓦罐汤套餐'],
-      regex: /(湘|湖南|长沙|费大厨|炊烟|兰湘子|蛙来哒|剁椒|擂辣椒|小炒黄牛肉|盖码饭|木桶饭|湘西|土家|滴水洞|武汉|湖北|热干面|蔡林记|豆皮|荆州|潜江|小龙虾|藕汤|赣|江西|南昌|拌粉|瓦罐汤|徽|臭鳜鱼|hunan)/i
-    },
-    {
-      cuisine: '江浙沪',
-      emoji: '🦀',
-      tag: '江南本帮',
-      combos: ['生煎/小笼包+牛肉粉丝汤', '本帮红烧肉/菜饭骨头汤', '苏式汤面/鸭血粉丝套餐'],
-      regex: /(沪|上海|本帮|苏|苏州|杭州|杭帮|浙|宁波|无锡|扬州|淮扬|南京|金陵|镇江|大壶春|小杨生煎|德兴馆|小南国|南翔|绿波廊|新白鹿|外婆家|绿茶|老盛昌|生煎|小笼|小籠包|锅贴|馄饨|吉祥馄饨|如意馄饨|菜饭|葱油拌面|片儿川|奥灶面|锅盖面|鸭血粉丝|盐水鸭|狮子头|东坡肉|黄鱼面|粢饭团|shanghai)/i
-    },
-    {
-      cuisine: '东北鲁菜',
-      emoji: '🥟',
-      tag: '北方硬菜',
-      combos: ['东北水饺/锅包肉双拼盒饭', '黄焖鸡/把子肉米饭套餐', '老北京炸酱面/煎饼套餐'],
-      regex: /(东北|哈尔滨|沈阳|长春|大连|鲁|山东|青岛|济南|京|北京|老北京|燕云楼|全聚德|便宜坊|护国寺|天津|狗不理|喜家德|东方饺子王|饺子|餃子|王将|日高屋|水饺|dumpling|黄焖鸡|杨铭宇|把子肉|超意兴|锅包肉|铁锅炖|酱大骨|烧烤|烤串|淄博|烤冷面|煎饼|炸酱面|卤煮|铜锅涮肉|烤鸭|peking|beijing|shandong)/i
-    },
-    {
-      cuisine: '西北晋豫',
-      emoji: '🍜',
-      tag: '西北面食',
-      combos: ['兰州拉面/刀削面+卤蛋套餐', '肉夹馍+凉皮三秦套餐', '新疆大盘鸡/羊肉串套餐'],
-      regex: /(西北|陕西|西安|三秦|西贝|兰州|蘭州|牛肉面|马记永|陈香贵|张拉拉|肉夹馍|凉皮|擀面皮|油泼面|biang|臊子面|泡馍|山西|刀削面|刀削麺|过油肉|莜面|河南|郑州|洛阳|开封|胡辣汤|方中山|烩面|水煎包|新疆|大盘鸡|手抓饭|羊肉串|烤馕|清真|羊肉汤|羊汤|宁夏|青海|甘肃)/i
-    },
-    {
-      cuisine: '云贵桂闽',
-      emoji: '🍲',
-      tag: '云贵桂闽',
-      combos: ['过桥/小锅米线单人套餐', '柳州螺蛳粉/桂林米粉套餐', '沙县拌面扁肉/酸汤鱼套餐'],
-      regex: /(云|云南|昆明|大理|丽江|过桥米线|小锅米线|米线|汽锅鸡|菌菇|贵|贵州|贵阳|遵义|凯里|酸汤鱼|牛肉粉|花溪|桂|广西|桂林|米粉|柳州|螺蛳粉|南宁|老友粉|闽|福建|厦门|泉州|福州|沙县|扁肉|沙茶面|面线糊|姜母鸭|海蛎煎|海南|椰子鸡|文昌鸡|台湾|魯肉飯|yunnan)/i
-    }
-  ];
-
-  function classifyNearbyShop(rawShop) {
-    const combined = `${rawShop.name} ${rawShop.rawCuisine || ''} ${rawShop.rawType || ''} ${rawShop.brand || ''}`;
-    let matchedCuisine = '家常中菜';
-    let emoji = '🥘';
-    let tag = '周边实店';
-    let combos = ['招牌双拼工作餐', '单人热销盖浇饭/面食套餐', '门店精选必点一人食'];
-
-    for (const rule of shopCuisineClassifier) {
-      if (rule.regex.test(combined)) {
-        matchedCuisine = rule.cuisine;
-        emoji = rule.emoji;
-        tag = rule.tag;
-        combos = rule.combos;
-        break;
-      }
-    }
-
-    if (matchedCuisine === '家常中菜') {
-      if (/(中華|バーミヤン|中国料理|中華料理|chinese)/i.test(combined)) {
-        emoji = '🥟';
-        tag = '中华料理';
-        combos = ['回锅肉/青椒肉丝定食', '煎饺+炒饭中华套餐'];
-      } else if (/(粥|豆浆|油条|包子|早餐|早点|馒头|饼)/.test(rawShop.name)) {
-        emoji = '🥣';
-        tag = '早点粥铺';
-        combos = ['招牌暖胃粥+小笼/肉包套餐', '现磨豆浆+手工煎饼/油条'];
-      } else if (/(面|粉|饺|馄饨)/.test(rawShop.name)) {
-        emoji = '🍜';
-        tag = '面食小吃';
-        combos = ['招牌浇头面+虎皮卤蛋套餐', '手工现包饺子/馄饨套餐'];
-      } else if (/(老乡鸡|真功夫|永和大王|东方既白|快餐|便当|弁当|盖饭|米饭)/.test(rawShop.name)) {
-        emoji = '🍱';
-        tag = '中式快餐';
-        combos = ['两荤一素招牌工作便当', '炖鸡/红烧肉双拼盖饭+例汤'];
-      } else if (/(烧烤|烤肉|串|龙虾)/.test(rawShop.name)) {
-        emoji = '🍢';
-        tag = '烧烤夜宵';
-        combos = ['炭火烤肉串+烤鸡翅夜宵餐', '招牌炒饭+凉菜烤串组合'];
-      } else if (/(鸡|鸭|鹅|排骨)/.test(rawShop.name)) {
-        emoji = '🍗';
-        tag = '肉食盖饭';
-        combos = ['招牌鸡腿/排骨饭+时蔬例汤'];
-      }
-    }
-
-    const isBreakfastFriendly = /(早|粥|包|豆浆|油条|肠粉|早茶|点心|生煎|小笼|锅贴|煎饼|灌饼|手抓饼|馄饨|云吞|抄手|面|粉|米线|胡辣汤|豆皮|烧麦|麦当劳|肯德基|KFC|McDonald|マクドナルド|モスバーガー|赛百味|Subway|永和大王|东方既白|德克士|吉野家|食其家|すき家|松屋|なか卯|ガスト|デニーズ|沙县|肉夹馍|三明治|贝果|可颂|烘焙|ベーカリー|fast_food|burger|sandwich|noodle)/i.test(combined);
-    const isDinnerOnly = /(夜宵|宵夜|大排档|啤酒广场|烧烤|烤串|龙虾|居酒屋|鳥貴族|ホルモン)/i.test(rawShop.name);
-
-    let meals = ['lunch', 'dinner'];
-    if (isBreakfastFriendly) meals = ['breakfast', 'lunch', 'dinner'];
-    else if (isDinnerOnly) meals = ['dinner'];
-
-    const estDeliveryMin = Math.max(18, Math.min(55, Math.round(16 + (rawShop.distance || 500) / 140)));
-
-    return {
-      ...rawShop,
-      cuisine: matchedCuisine,
-      meals,
-      modes: ['takeout'],
-      isRealShop: true,
-      emoji,
-      tag,
-      combos,
-      estDeliveryMin
-    };
-  }
-
-  function haversineMeters(lat1, lng1, lat2, lng2) {
-    const R = 6371000;
-    const toRad = d => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-  }
-
-  function isLikelyJapan(lat, lng, label) {
-    if (/(日本|東京|大阪|京都|北海道|神奈川|埼玉|千葉|愛知|福岡|兵庫|県|府|八王子|渋谷|新宿|横浜|名古屋|札幌)/i.test(label || '')) {
-      return true;
-    }
-    return lat >= 24 && lat <= 46 && lng >= 127.5 && lng <= 154;
-  }
-
-  // 引擎 A：Google Maps JavaScript API Places Library (全球 & 日本支持，无CORS限制，返回真实星级与评价数)
-  let loadedGoogleKey = '';
-  function loadGoogleMapsSDK(apiKey) {
-    return new Promise((resolve, reject) => {
-      if (window.google?.maps?.importLibrary && loadedGoogleKey === apiKey) {
-        resolve();
-        return;
-      }
-      const existing = document.getElementById('gmaps-places-sdk');
-      if (existing) existing.remove();
-      const script = document.createElement('script');
-      script.id = 'gmaps-places-sdk';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&language=zh-CN&loading=async`;
-      script.async = true;
-      script.defer = true;
-      const timer = setTimeout(() => reject(new Error('Google Maps SDK 加载超时')), 9000);
-      script.onload = () => {
-        clearTimeout(timer);
-        loadedGoogleKey = apiKey;
-        resolve();
-      };
-      script.onerror = () => {
-        clearTimeout(timer);
-        reject(new Error('Google Maps SDK 加载失败，请检查 Key 或网络'));
-      };
-      document.head.appendChild(script);
-    });
-  }
-
-  async function fetchDirectGooglePlaces(lat, lng, radius, apiKey) {
-    await loadGoogleMapsSDK(apiKey);
-    const { Place, SearchNearbyRankPreference } = await window.google.maps.importLibrary('places');
-    const request = {
-      fields: ['displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'types', 'primaryTypeDisplayName', 'priceLevel', 'photos'],
-      locationRestriction: {
-        center: { lat, lng },
-        radius: Math.min(Math.max(radius, 500), 5000)
-      },
-      includedPrimaryTypes: [
-        'restaurant',
-        'fast_food_restaurant',
-        'ramen_restaurant',
-        'sushi_restaurant',
-        'japanese_restaurant',
-        'chinese_restaurant',
-        'korean_restaurant',
-        'italian_restaurant',
-        'hamburger_restaurant',
-        'pizza_restaurant',
-        'barbecue_restaurant',
-        'meal_takeaway'
-      ],
-      maxResultCount: 20,
-      rankPreference: SearchNearbyRankPreference ? SearchNearbyRankPreference.POPULARITY : 'POPULARITY'
-    };
-
-    const { places } = await Place.searchNearby(request);
-    if (!Array.isArray(places) || places.length === 0) return [];
-
-    const priceMap = {
-      FREE: '免费',
-      INEXPENSIVE: '平价实惠',
-      MODERATE: '人均适中',
-      EXPENSIVE: '轻奢品质',
-      VERY_EXPENSIVE: '高端料理'
-    };
-
-    const shops = places
-      .filter(p => p.displayName)
-      .map(p => {
-        const pLat = typeof p.location?.lat === 'function' ? p.location.lat() : p.location?.lat || lat;
-        const pLng = typeof p.location?.lng === 'function' ? p.location.lng() : p.location?.lng || lng;
-        let photoUrl = '';
-        try {
-          if (p.photos?.[0]?.getURI) photoUrl = p.photos[0].getURI({ maxWidth: 640 });
-        } catch (_) {}
-
-        return {
-          name: String(p.displayName).trim(),
-          address: p.formattedAddress || '周边商圈门店',
-          distance: haversineMeters(lat, lng, pLat, pLng),
-          rawType: p.primaryTypeDisplayName || (p.types || []).join(' '),
-          rawCuisine: (p.types || []).join(' '),
-          rating: p.rating ? Number(p.rating).toFixed(1) : '',
-          ratingCount: p.userRatingCount || 0,
-          budgetText: priceMap[p.priceLevel] || '',
-          photoUrl,
-          lat: pLat,
-          lng: pLng,
-          source: 'google'
-        };
-      });
-
-    shops.sort((a, b) => (parseFloat(b.rating || 0) - parseFloat(a.rating || 0)) || (a.distance - b.distance));
-    return shops;
-  }
-
-  // 引擎 B：日本 Hot Pepper Gourmet API（完全免费免绑卡，JSONP 直连无 CORS 限制）
-  function fetchDirectHotPepperJSONP(lat, lng, radius, apiKey) {
-    return new Promise((resolve, reject) => {
-      const range = radius <= 500 ? 2 : radius <= 1000 ? 3 : radius <= 2000 ? 4 : 5;
-      const cbName = `__hp_cb_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-      const script = document.createElement('script');
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        if (script.parentNode) script.parentNode.removeChild(script);
-        try {
-          delete window[cbName];
-        } catch (_) {
-          window[cbName] = undefined;
-        }
-      };
-
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new Error('Hot Pepper 请求超时'));
-      }, 9000);
-
-      window[cbName] = data => {
-        cleanup();
-        const rawList = data?.results?.shop;
-        if (!Array.isArray(rawList)) {
-          reject(new Error(data?.results?.error?.[0]?.message || 'Hot Pepper 返回为空'));
-          return;
-        }
-        const shops = rawList
-          .filter(s => s.name)
-          .map(s => {
-            const sLat = parseFloat(s.lat) || lat;
-            const sLng = parseFloat(s.lng) || lng;
-            return {
-              name: String(s.name).trim(),
-              address: s.address || s.station_name || '日本周边门店',
-              distance: haversineMeters(lat, lng, sLat, sLng),
-              rawType: s.genre?.name || 'restaurant',
-              rawCuisine: `${s.genre?.name || ''} ${s.sub_genre?.name || ''} ${s.catch || ''}`,
-              budgetText: s.budget?.average || s.budget?.name || '',
-              openTime: s.open || '',
-              photoUrl: s.photo?.pc?.l || s.photo?.mobile?.l || '',
-              shopUrl: s.urls?.pc || '',
-              lat: sLat,
-              lng: sLng,
-              source: 'hotpepper'
-            };
-          });
-        shops.sort((a, b) => a.distance - b.distance);
-        resolve(shops);
-      };
-
-      script.onerror = () => {
-        cleanup();
-        reject(new Error('Hot Pepper JSONP 加载失败'));
-      };
-      script.src = `https://webservice.recruit.co.jp/hotpepper/gourmet/v1/?key=${encodeURIComponent(apiKey)}&lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&range=${range}&count=60&format=jsonp&callback=${cbName}`;
-      document.head.appendChild(script);
-    });
-  }
-
-  function isInMainlandChina(lat, lng) {
-    return lat >= 18.0 && lat <= 53.6 && lng >= 73.5 && lng <= 135.1 && !isLikelyJapan(lat, lng, '');
-  }
-
-  // WGS-84（浏览器原生GPS坐标）转 GCJ-02（高德/腾讯火星坐标系），修正国内 300~700 米偏移
-  function wgs84ToGcj02(wgsLat, wgsLng) {
-    if (!isInMainlandChina(wgsLat, wgsLng)) return { lat: wgsLat, lng: wgsLng };
-    const PI = Math.PI;
-    const a = 6378245.0;
-    const ee = 0.00669342162296594323;
-    const x = wgsLng - 105.0;
-    const y = wgsLat - 35.0;
-    let dLat = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
-    dLat += ((20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0) / 3.0;
-    dLat += ((20.0 * Math.sin(y * PI) + 40.0 * Math.sin((y / 3.0) * PI)) * 2.0) / 3.0;
-    dLat += ((160.0 * Math.sin((y / 12.0) * PI) + 320 * Math.sin((y * PI) / 30.0)) * 2.0) / 3.0;
-
-    let dLng = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
-    dLng += ((20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0) / 3.0;
-    dLng += ((20.0 * Math.sin(x * PI) + 40.0 * Math.sin((x / 3.0) * PI)) * 2.0) / 3.0;
-    dLng += ((150.0 * Math.sin((x / 12.0) * PI) + 300.0 * Math.sin((x / 30.0) * PI)) * 2.0) / 3.0;
-
-    const radLat = (wgsLat / 180.0) * PI;
-    let magic = Math.sin(radLat);
-    magic = 1 - ee * magic * magic;
-    const sqrtMagic = Math.sqrt(magic);
-    dLat = (dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * PI);
-    dLng = (dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * PI);
-    return { lat: wgsLat + dLat, lng: wgsLng + dLng };
-  }
-
-  // 引擎 C：高德地图 POI 2.0（中国大陆支持CORS，含国内商户评分，自动 WGS-84 → GCJ-02 纠偏）
-  async function fetchDirectAmap(lat, lng, radius, amapKey) {
-    const gcj = wgs84ToGcj02(lat, lng);
-    const shops = [];
-    for (let page = 1; page <= 3; page++) {
-      const url = `https://restapi.amap.com/v5/place/around?key=${encodeURIComponent(amapKey)}&location=${gcj.lng.toFixed(6)},${gcj.lat.toFixed(6)}&radius=${radius}&types=050000&page_size=25&page_num=${page}&show_fields=business`;
-      const res = await fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
-      const data = await res.json();
-      if (data.status !== '1') {
-        if (page === 1) throw new Error(data.info || '高德Key校验失败');
-        break;
-      }
-      const pois = data.pois || [];
-      for (const p of pois) {
-        if (!p.name) continue;
-        const [pLng, pLat] = (p.location || '').split(',').map(Number);
-        const dist = p.distance ? Number(p.distance) : haversineMeters(gcj.lat, gcj.lng, pLat || gcj.lat, pLng || gcj.lng);
-        shops.push({
-          name: p.name.trim(),
-          address: p.address || p.adname || '',
-          distance: dist,
-          rawType: p.type || '',
-          rawCuisine: p.business?.tag || p.type || '',
-          rating: p.business?.rating || '',
-          cost: p.business?.cost || '',
-          openTime: p.business?.opentime_today || '',
-          lat: pLat || gcj.lat,
-          lng: pLng || gcj.lng,
-          source: 'amap'
-        });
-      }
-      if (pois.length < 25) break;
-    }
-    return shops;
-  }
-
-  // 引擎 D：OpenStreetMap Overpass 免费公网多节点兜底（带 7 秒超时，防止东京/全球卡死）
-  async function fetchDirectOverpass(lat, lng, radius) {
-    const radiusKm = Math.max(0.5, Math.min(5, radius / 1000));
-    const dLat = radiusKm / 111;
-    const dLng = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
-    const bbox = `${(lat - dLat).toFixed(4)},${(lng - dLng).toFixed(4)},${(lat + dLat).toFixed(4)},${(lng + dLng).toFixed(4)}`;
-    const q = `[out:json][timeout:6];node["amenity"~"restaurant|fast_food"](${bbox});out 140;`;
-    const skipDrinkRegex = /(奶茶|茶饮|一点点|1点点|喜茶|奈雪|蜜雪冰城|霸王茶姬|茶百道|古茗|沪上阿姨|瑞幸|星巴克|Starbucks|スターバックス|ドトール|タリーズ|Costa|咖啡|Coffee|Cafe|カフェ|喫茶|甜品|满记|许留山|冰淇淋|雪糕|DQ|哈根达斯|酒吧|酒馆|Bar|Pub|KTV)/i;
-
-    const endpoints = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter'
-    ];
-
-    let data = null;
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(`${ep}?data=${encodeURIComponent(q)}`, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined
-        });
-        if (res.ok) {
-          data = await res.json();
-          if (data && Array.isArray(data.elements)) break;
-        }
-      } catch (_) {}
-    }
-    if (!data) throw new Error('OSM 公共接口繁忙超时');
-
-    const seen = new Set();
-    const shops = [];
-    for (const el of data.elements || []) {
-      const tags = el.tags || {};
-      const name = (tags['name:zh'] || tags.name || tags['name:ja'] || tags['name:en'] || '').trim();
-      if (!name || name.length < 2 || skipDrinkRegex.test(name)) continue;
-      if (/(bubble_tea|coffee_shop|ice_cream|tea)/i.test(tags.cuisine || '')) continue;
-      const dist = haversineMeters(lat, lng, el.lat, el.lon);
-      if (dist > radius) continue;
-      const key = `${name}_${Math.round(dist / 200)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const addr = [tags['addr:district'] || tags['addr:suburb'], tags['addr:street'] || tags['addr:road'], tags['addr:housenumber']].filter(Boolean).join(' ');
-      shops.push({
-        name,
-        address: addr || '周边商圈门店',
-        distance: dist,
-        rawType: tags.amenity || 'restaurant',
-        rawCuisine: tags.cuisine || '',
-        brand: tags.brand || '',
-        lat: el.lat,
-        lng: el.lon,
-        source: 'osm'
-      });
-    }
-    shops.sort((a, b) => a.distance - b.distance);
-    return shops;
-  }
-
-  function matchStaticCitySnapshot(lat, lng, radius, cityLabel) {
-    const citySnapshots = window.CITY_SHOPS_DATA || {};
-    let matchedKey = Object.keys(citySnapshots).find(k => cityLabel && (cityLabel.includes(k) || cityLabel.includes(k.replace('市', ''))));
-
-    // 国内逆地理接口若超时导致 cityLabel 为纯经纬度，仍按真实 GPS 坐标距离直接匹配
-    if (!matchedKey) {
-      let bestDist = Infinity;
-      for (const [cityName, list] of Object.entries(citySnapshots)) {
-        if (!Array.isArray(list) || list.length === 0) continue;
-        const sample = list[0];
-        const d = haversineMeters(lat, lng, sample.lat, sample.lng);
-        if (d < 45000 && d < bestDist) {
-          bestDist = d;
-          matchedKey = cityName;
-        }
-      }
-    }
-
-    if (!matchedKey || !Array.isArray(citySnapshots[matchedKey])) return [];
-
-    if (!state.location.city && matchedKey) {
-      state.location.city = matchedKey;
-      state.location.label = matchedKey;
-    }
-
-    // 严格遵守用户选择的配送半径（绝不把 17km 外的店铺混进 3km 内推荐！）
-    return citySnapshots[matchedKey]
-      .map(s => ({
-        ...s,
-        distance: haversineMeters(lat, lng, s.lat, s.lng)
-      }))
-      .filter(s => s.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
-  }
-
-  async function scanNearbyShops(force = false) {
-    if (!state.location.lat || !state.location.lng) return;
-    const keySig = `${state.googleKey ? 'g' : ''}${state.hotpepperKey ? 'h' : ''}${state.amapKey ? 'a' : ''}` || 'free';
-    const scanKey = `${state.location.lat.toFixed(3)}_${state.location.lng.toFixed(3)}_${state.radius}_${keySig}`;
-    if (!force && state.nearbyScannedKey === scanKey && state.nearbyShops.length > 0) {
-      return;
-    }
-
-    state.nearbyLoading = true;
-    locDot.classList.add('loading');
-    locText.textContent = `正在扫描 ${state.location.label} ${state.radius / 1000}km 内餐饮店...`;
-
-    const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
-    const inJapan = isLikelyJapan(state.location.lat, state.location.lng, state.location.label);
-
-    try {
-      let rawShops = [];
-      let source = 'osm';
-
-      // 优先级 0：Vercel 动态服务端代理（免访客填 Key，服务端环境变量直连高德 / Google / Hot Pepper）
-      if (hasServerApi && !state.googleKey && !state.hotpepperKey && !state.amapKey) {
-        try {
-          const apiUrl = `/api/nearby?lat=${state.location.lat}&lng=${state.location.lng}&radius=${state.radius}&lang=zh-CN`;
-          const res = await fetch(apiUrl, { signal: AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.ok && Array.isArray(data.shops) && data.shops.length > 0) {
-              rawShops = data.shops;
-              source = data.source || 'amap';
-            }
-          }
-        } catch (_) {}
-      }
-
-      // 优先级 1：用户自填 Google Maps Places JS API（全球/日本带真实星级评价）
-      if (rawShops.length === 0 && state.googleKey) {
-        try {
-          rawShops = await fetchDirectGooglePlaces(state.location.lat, state.location.lng, state.radius, state.googleKey);
-          source = 'google';
-        } catch (gErr) {
-          showToast(`⚠️ Google Places: ${gErr.message || '调用失败，尝试备用源'}`);
-        }
-      }
-
-      // 优先级 2：日本区域且配置了免费 Hot Pepper Gourmet Key（JSONP 直连）
-      if (rawShops.length === 0 && state.hotpepperKey && inJapan) {
-        try {
-          rawShops = await fetchDirectHotPepperJSONP(state.location.lat, state.location.lng, state.radius, state.hotpepperKey);
-          source = 'hotpepper';
-        } catch (hErr) {
-          showToast(`⚠️ Hot Pepper: ${hErr.message || '调用失败'}`);
-        }
-      }
-
-      // 优先级 3：高德 POI 2.0（中国大陆带真实商户评分）
-      if (rawShops.length === 0 && state.amapKey && !inJapan) {
-        try {
-          rawShops = await fetchDirectAmap(state.location.lat, state.location.lng, state.radius, state.amapKey);
-          source = 'amap';
-        } catch (aErr) {
-          showToast(`⚠️ 高德 API: ${aErr.message || '调用失败'}`);
-        }
-      }
-
-      // 优先级 4：免 Key 国内快照 / 免费 Overpass 公网超时保护扫描
-      if (rawShops.length === 0) {
-        const snapshot = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
-        if (snapshot.length > 0) {
-          rawShops = snapshot;
-          source = 'osm';
-        } else {
-          rawShops = await fetchDirectOverpass(state.location.lat, state.location.lng, state.radius);
-          source = 'osm';
-        }
-      }
-
-      // 无论来自哪个数据源，统一严格过滤超出用户选定半径的店铺
-      rawShops = rawShops.filter(s => s.distance == null || s.distance <= state.radius);
-
-      if (rawShops.length > 0) {
-        state.nearbyShops = rawShops.map(classifyNearbyShop);
-        state.nearbySource = source;
-        state.nearbyScannedKey = scanKey;
-        locDot.classList.remove('loading');
-        const srcNameMap = {
-          google: 'Google星级实店',
-          hotpepper: 'HotPepper日本实店',
-          amap: '高德评分实店',
-          osm: 'OSM周边实店'
-        };
-        locText.textContent = `${state.location.label} · ${state.radius / 1000}km内发现 ${state.nearbyShops.length} 家${srcNameMap[source] || '周边实店'}`;
-      } else {
-        throw new Error('当前范围暂无扫描到实店');
-      }
-    } catch (_) {
-      const fallbackSnap = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
-      locDot.classList.remove('loading');
-      if (fallbackSnap.length > 0) {
-        state.nearbyShops = fallbackSnap.map(classifyNearbyShop);
-        state.nearbySource = 'osm';
-        state.nearbyScannedKey = scanKey;
-        locText.textContent = `${state.location.label} · ${state.radius / 1000}km内发现 ${state.nearbyShops.length} 家周边实店`;
-      } else {
-        locText.textContent = `${state.location.label} · ${state.radius / 1000}km内无免Key实店，已切外卖品类推荐（点 ⚙️ 配Key搜实店）`;
-        state.nearbyShops = [];
-      }
-    } finally {
-      state.nearbyLoading = false;
-      syncUI();
-    }
-  }
-
-  // =========================================================================
   // 4. 候选池计算 & 菜系角标 & 数字滚动
   // =========================================================================
-  // 精选高口碑周边品牌/老字号匹配规则（点外卖+AI精选时优先筛选周边优质实店）
-  const aiTopShopRegex = /(大壶春|德兴馆|小南国|鼎泰丰|费大厨|太二|海底捞|点都德|陶陶居|外婆家|新白鹿|小杨生煎|老乡鸡|乡村基|喜家德|西贝|陈香贵|马记永|吉野家|食其家|味千|蓝蛙|Wagas|萨莉亚|必胜客|汉堡王|麦当劳|肯德基|全聚德|燕云楼|蔡林记|方中山|老字号|旗舰店|招牌|烧烤|火锅|川菜|粤菜|茶餐厅|拉面|寿司|生煎|小笼)/i;
-
   function getGuessPool() {
     const candidates = [];
     const seen = new Set();
@@ -1402,21 +782,15 @@
     const pushIfValid = item => {
       if (!item || !item.name || seen.has(item.name)) return;
       if (state.cuisine !== 'all' && state.cuisine !== 'AI精选' && item.cuisine !== state.cuisine) return;
-      if (state.cuisine === 'AI精选' && !item.aiPick && !(item.isRealShop && item.rating && parseFloat(item.rating) >= 4.2)) return;
+      if (state.cuisine === 'AI精选' && !item.aiPick) return;
       seen.add(item.name);
       candidates.push(item);
     };
 
-    // 优先纳入当前餐段的家常菜/懒人菜
+    // 纳入当前餐段的菜品（家常菜 / 懒人菜 / 外卖）
     for (const d of staticDishes) {
-      if (d.meals?.includes(state.meal) && (d.modes?.includes('cook') || d.modes?.includes('lazy'))) {
+      if (d.meals?.includes(state.meal)) {
         pushIfValid(d);
-      }
-    }
-    // 如果已经扫到了周边真实店铺，也纳入猜你喜欢混合池
-    for (const s of state.nearbyShops) {
-      if (s.meals?.includes(state.meal)) {
-        pushIfValid(s);
       }
     }
 
@@ -1449,27 +823,6 @@
       return getGuessPool();
     }
 
-    if (state.mode === 'takeout' && state.nearbyShops.length > 0) {
-      const withinRadius = state.nearbyShops.filter(s => s.distance == null || s.distance <= state.radius);
-      if (withinRadius.length > 0) {
-        if (state.cuisine === 'AI精选') {
-          const aiShops = withinRadius.filter(s => s.meals.includes(state.meal) && (aiTopShopRegex.test(s.name) || (s.rating && parseFloat(s.rating) >= 4.2)));
-          if (aiShops.length > 0) return aiShops;
-          return withinRadius.slice(0, 20);
-        }
-
-        const realMatches = withinRadius.filter(s => {
-          const mealMatch = s.meals.includes(state.meal);
-          const cuisineMatch = state.cuisine === 'all' || s.cuisine === state.cuisine;
-          return mealMatch && cuisineMatch;
-        });
-        if (realMatches.length > 0) return realMatches;
-        const relaxedReal = withinRadius.filter(s => state.cuisine === 'all' || s.cuisine === state.cuisine);
-        if (relaxedReal.length > 0) return relaxedReal;
-      }
-    }
-
-    // 自己做 / 懒人专区 / 无实店外卖兜底
     if (state.cuisine === 'AI精选') {
       const exactAi = staticDishes.filter(d => d.aiPick && d.meals.includes(state.meal) && d.modes.includes(state.mode));
       if (exactAi.length > 0) return exactAi;
@@ -1486,19 +839,10 @@
   }
 
   function updateCuisineChipCounts() {
-    const showRealCounts = state.mode === 'takeout' && state.nearbyShops.length > 0;
     cuisineGroup.querySelectorAll('.cuisine-chip').forEach(btn => {
       const c = btn.dataset.cuisine;
       const baseLabel = cuisineBaseLabels.get(c) || btn.textContent;
-      if (showRealCounts) {
-        let cnt = 0;
-        if (c === 'all') cnt = state.nearbyShops.length;
-        else if (c === 'AI精选') cnt = state.nearbyShops.filter(s => aiTopShopRegex.test(s.name) || (s.rating && parseFloat(s.rating) >= 4.2)).length || Math.min(20, state.nearbyShops.length);
-        else cnt = state.nearbyShops.filter(s => s.cuisine === c).length;
-        btn.innerHTML = `${baseLabel}<span class="cuisine-chip-count">(${cnt})</span>`;
-      } else {
-        btn.textContent = baseLabel;
-      }
+      btn.textContent = baseLabel;
     });
   }
 
@@ -1506,8 +850,7 @@
   function animatePoolCount(targetCount) {
     if (countAnimId) cancelAnimationFrame(countAnimId);
     const startCount = state.displayedPoolCount || 0;
-    const isRealTakeout = state.mode === 'takeout' && state.nearbyShops.length > 0 && getFilteredPool()[0]?.isRealShop;
-    const unit = isRealTakeout ? '家实店' : (state.mode === 'guess' ? '道精选' : '道');
+    const unit = state.mode === 'guess' ? '道精选' : '道';
 
     poolCountEl.innerHTML = `候选 <b id="poolCountNum">${startCount}</b> ${unit}`;
     const numEl = document.getElementById('poolCountNum');
@@ -1584,24 +927,6 @@
     if (guessStatusLayer) guessStatusLayer.classList.toggle('active', state.mode === 'guess');
     updateGuessStatusSummary();
 
-    if (state.mode === 'takeout') {
-      if (state.location.ready && !state.nearbyLoading && state.nearbyShops.length === 0 && !state.nearbyScannedKey) {
-        (async () => {
-          if (!state.location.city && state.location.lat && state.location.lng) {
-            try {
-              const data = await reverseGeocode(state.location.lat, state.location.lng);
-              const city = data.city || data.principalSubdivision || '';
-              const district = data.locality || '';
-              state.location.city = city;
-              state.location.district = district;
-              state.location.label = [city, district].filter(Boolean).join('·') || state.location.label;
-            } catch (_) {}
-          }
-          scanNearbyShops();
-        })();
-      }
-    }
-
     updateCuisineChipCounts();
     const pool = getFilteredPool();
     animatePoolCount(pool.length);
@@ -1616,301 +941,17 @@
           tasteProfile.totalInteractions >= 3
             ? `❤️ 已基于你的 ${tasteProfile.totalDraws} 次饮食偏好精选高契合美食，点击开抽！`
             : '❤️ 猜你喜欢已就绪：抽中后点 👍/👎，你的离线习惯模型会越来越懂你！';
-      } else if (!state.location.ready) {
-        dockIdleText.textContent = '📍 请先允许浏览器位置授权，以识别你周边范围内的真实外卖店铺';
       } else {
-        dockIdleText.textContent =
-          state.nearbyShops.length > 0
-            ? `已识别周围 ${state.radius / 1000}km 内 ${state.nearbyShops.length} 家实店，点击直接开抽！`
-            : '已定位，点击「开始抽卡」抽取今日外卖';
+        dockIdleText.textContent = '🛵 点外卖已就绪：抽中后一键带关键词跳转高德 / 百度 / 美团 / 饿了么搜周边';
       }
     }
-  }
-
-  // =========================================================================
-  // 5. 纯浏览器授权地理位置定位（兼容中国大陆 Chrome/Edge/移动端，高德逆地理 + 自动降级重试）
-  // =========================================================================
-  async function reverseGeocode(lat, lng) {
-    const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
-
-    // 0. Vercel 服务端高德逆地理（访客免填 Key，国内秒回）
-    if (hasServerApi && !state.amapKey && isInMainlandChina(lat, lng)) {
-      try {
-        const res = await fetch(`/api/geo?lat=${lat}&lng=${lng}`, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
-        });
-        const data = await res.json();
-        if (data.ok && (data.city || data.principalSubdivision)) return data;
-      } catch (_) {}
-    }
-
-    // 1. 中国大陆且已配置高德 Key：优先走高德逆地理（直连秒回、无外网阻断、已含 WGS-84→GCJ-02 纠偏）
-    if (state.amapKey && isInMainlandChina(lat, lng)) {
-      try {
-        const gcj = wgs84ToGcj02(lat, lng);
-        const url = `https://restapi.amap.com/v3/geocode/regeo?key=${encodeURIComponent(state.amapKey)}&location=${gcj.lng.toFixed(6)},${gcj.lat.toFixed(6)}`;
-        const res = await fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
-        const data = await res.json();
-        if (data.status === '1' && data.regeocode?.addressComponent) {
-          const ac = data.regeocode.addressComponent;
-          const city = (Array.isArray(ac.city) ? ac.province : ac.city) || ac.province || '';
-          const district = (Array.isArray(ac.district) ? '' : ac.district) || '';
-          return { city, locality: district, principalSubdivision: ac.province || '' };
-        }
-      } catch (_) {}
-    }
-
-    // 2. 全球免费逆地理兜底（带 5 秒超时防止国内卡死）
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=zh`;
-    const res = await fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
-    return res.json();
-  }
-
-  // 国内原生高德 IP 定位（不依赖 Chrome/Google 定位服务）
-  async function fetchAmapIPLocation(amapKey) {
-    const res = await fetch(`https://restapi.amap.com/v3/ip?key=${encodeURIComponent(amapKey)}`, {
-      signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined
-    });
-    const data = await res.json();
-    if (data.status === '1' && typeof data.rectangle === 'string' && data.rectangle.includes(';')) {
-      const [p1, p2] = data.rectangle.split(';').map(s => s.split(',').map(Number));
-      if (p1.length === 2 && p2.length === 2) {
-        const lng = (p1[0] + p2[0]) / 2;
-        const lat = (p1[1] + p2[1]) / 2;
-        const city = (Array.isArray(data.city) ? data.province : data.city) || data.province || '';
-        return { lat, lng, city, district: '', label: city || '当前城市', via: '高德IP定位' };
-      }
-    }
-    throw new Error('高德 IP 定位无有效结果');
-  }
-
-  // 免 Key 公开网络 IP 定位兜底（绕开国内桌面 Chrome 的 Google 定位阻断）
-  async function fetchFreeIPLocation() {
-    const providers = [
-      async () => {
-        const res = await fetch('https://get.geojs.io/v1/ip/geo.json', {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined
-        });
-        const d = await res.json();
-        if (!d.latitude || !d.longitude) throw new Error('geojs empty');
-        return {
-          lat: parseFloat(d.latitude),
-          lng: parseFloat(d.longitude),
-          city: d.city || d.region || '',
-          district: '',
-          label: [d.region, d.city].filter(Boolean).join('·') || '当前位置',
-          via: '网络IP定位'
-        };
-      },
-      async () => {
-        const res = await fetch('https://ipwho.is/', {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined
-        });
-        const d = await res.json();
-        if (!d.success || !d.latitude || !d.longitude) throw new Error('ipwhois empty');
-        return {
-          lat: Number(d.latitude),
-          lng: Number(d.longitude),
-          city: d.city || d.region || '',
-          district: '',
-          label: [d.region, d.city].filter(Boolean).join('·') || '当前位置',
-          via: '网络IP定位'
-        };
-      }
-    ];
-    for (const fn of providers) {
-      try {
-        const loc = await fn();
-        if (loc && !isNaN(loc.lat) && !isNaN(loc.lng)) return loc;
-      } catch (_) {}
-    }
-    throw new Error('网络 IP 定位不可用');
-  }
-
-  function requestBrowserLocation(onAuthorized, silentOnInit = false) {
-    if (state.location.locating) return;
-    state.location.locating = true;
-
-    const finishWithLocation = async (lat, lng, presetCity, presetDistrict, presetLabel, viaTag) => {
-      state.location.locating = false;
-      state.location.denied = false;
-      state.location.lat = lat;
-      state.location.lng = lng;
-      state.location.ready = true;
-      btnRelocate.textContent = '📍 重新定位';
-      btnRelocate.classList.remove('loc-auth-btn');
-
-      // 省额度策略：若当前不在「点外卖」模式（如刚打开页面在自己做），只存好坐标，暂不消耗高德逆地理和搜店配额！
-      if (state.mode !== 'takeout' && silentOnInit) {
-        state.location.label = presetLabel || `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
-        locDot.classList.remove('loading');
-        locText.textContent = '已获取定位 · 切到点外卖时自动扫描周边实店';
-        syncUI();
-        return;
-      }
-
-      if (presetLabel) {
-        state.location.city = presetCity || '';
-        state.location.district = presetDistrict || '';
-        state.location.label = presetLabel;
-      } else {
-        try {
-          const data = await reverseGeocode(lat, lng);
-          const city = data.city || data.principalSubdivision || '';
-          const district = data.locality || '';
-          state.location.city = city;
-          state.location.district = district;
-          state.location.label = [city, district].filter(Boolean).join('·') || `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
-        } catch (_) {
-          state.location.city = '';
-          state.location.district = '';
-          state.location.label = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
-        }
-      }
-
-      if (viaTag && !silentOnInit) showToast(`📍 已通过${viaTag}识别：${state.location.label}`);
-      if (state.mode === 'takeout') {
-        await scanNearbyShops(true);
-      }
-      if (typeof onAuthorized === 'function') onAuthorized();
-    };
-
-    const fallbackWithoutChrome = async err => {
-      // 用户主动点击「拒绝授权」(code 1) 或浏览器禁止非手势弹窗
-      if (err && err.code === 1) {
-        state.location.locating = false;
-        state.location.ready = false;
-        state.location.denied = true;
-        state.nearbyShops = [];
-        locDot.classList.remove('loading');
-        locDot.classList.add('error');
-        btnRelocate.textContent = '📍 重试授权';
-        btnRelocate.classList.add('loc-auth-btn');
-        if (!window.isSecureContext) {
-          locText.textContent = '需在 HTTPS 网址下使用定位（当前非安全连接）';
-        } else {
-          locText.textContent = '未获定位权限 · 可点地址栏左侧图标开启，或直接抽外卖套餐';
-        }
-        if (!silentOnInit) {
-          showToast('⚠️ 浏览器未授予位置权限（点地址栏左侧图标可重新开启），现可直接抽取外卖套餐');
-        }
-        syncUI();
-        return;
-      }
-
-      // 不依赖 Chrome/Google 定位服务：优先走服务端高德 IP（Vercel）或本地高德 Key，再走免 Key 网络 IP 定位
-      const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
-      if (hasServerApi && !state.amapKey) {
-        try {
-          locText.textContent = '正在使用高德服务端国内定位...';
-          const r = await fetch('/api/geo?mode=ip', { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
-          const d = await r.json();
-          if (d.ok && d.lat && d.lng) {
-            await finishWithLocation(d.lat, d.lng, d.city, d.district, d.label, '高德国内定位');
-            return;
-          }
-        } catch (_) {}
-      }
-
-      try {
-        if (state.amapKey) {
-          locText.textContent = '正在使用高德国内定位...';
-          const amapLoc = await fetchAmapIPLocation(state.amapKey);
-          await finishWithLocation(amapLoc.lat, amapLoc.lng, amapLoc.city, amapLoc.district, amapLoc.label, amapLoc.via);
-          return;
-        }
-      } catch (_) {}
-
-      try {
-        locText.textContent = '正在通过网络定位识别当前位置...';
-        const ipLoc = await fetchFreeIPLocation();
-        let cnLabel = ipLoc.label;
-        let cnCity = ipLoc.city;
-        try {
-          const geo = await reverseGeocode(ipLoc.lat, ipLoc.lng);
-          const c = geo.city || geo.principalSubdivision || '';
-          const d = geo.locality || '';
-          if (c) {
-            cnCity = c;
-            cnLabel = [c, d].filter(Boolean).join('·');
-          }
-        } catch (_) {}
-        await finishWithLocation(ipLoc.lat, ipLoc.lng, cnCity, '', cnLabel, ipLoc.via);
-        return;
-      } catch (_) {}
-
-      state.location.locating = false;
-      state.location.ready = false;
-      state.nearbyShops = [];
-      locDot.classList.remove('loading');
-      locDot.classList.add('error');
-      btnRelocate.textContent = '📍 授权定位';
-      btnRelocate.classList.add('loc-auth-btn');
-      locText.textContent = '暂无法获取当前位置 · 可直接抽外卖套餐或点 ⚙️ 配高德 Key';
-      if (!silentOnInit) showToast('⚠️ 定位失败，现可直接抽取外卖套餐');
-      syncUI();
-    };
-
-    locDot.classList.remove('error');
-    locDot.classList.add('loading');
-
-    if (!('geolocation' in navigator) || !window.isSecureContext) {
-      fallbackWithoutChrome({ code: window.isSecureContext ? 2 : 1 });
-      return;
-    }
-
-    locText.textContent = state.amapKey ? '正在定位（高德优先 / 浏览器授权）...' : '正在向浏览器请求位置授权...';
-
-    // 使用 10 秒超时确保手机真实 GPS 冷启动有足够时间锁定，不会过早超时
-    navigator.geolocation.getCurrentPosition(
-      pos => finishWithLocation(pos.coords.latitude, pos.coords.longitude),
-      err => fallbackWithoutChrome(err),
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 180000 }
-    );
   }
 
   // =========================================================================
   // 6. 滚轮卡片渲染 & 零闪烁老虎机引擎
   // =========================================================================
-  function formatDistance(meters) {
-    if (meters == null) return '周边';
-    return meters >= 1000 ? `${(meters / 1000).toFixed(1)}km` : `${meters}m`;
-  }
-
-  function formatRatingBadge(item) {
-    if (!item.rating) return '';
-    const cnt = item.ratingCount ? ` (${item.ratingCount}评)` : '';
-    return `<span class="badge badge-rating">⭐ ${item.rating}${cnt}</span>`;
-  }
-
   function createReelCardHTML(item) {
     const titleClass = item.name.length > 10 ? 'dish-name combo-title' : 'dish-name';
-    if (item.isRealShop) {
-      const ratingHTML = formatRatingBadge(item);
-      const thirdBadge = ratingHTML
-        ? ratingHTML
-        : item.budgetText
-          ? `<span class="badge badge-flavor">💰 ${item.budgetText}</span>`
-          : `<span class="badge badge-flavor">约 ${item.estDeliveryMin} 分钟达</span>`;
-      const matchBadge = state.mode === 'guess' && item._matchPct
-        ? `<span class="badge badge-match">❤️ ${item._matchPct}% 契合</span>`
-        : `<span class="badge badge-cuisine">${item.cuisine}</span>`;
-
-      return `
-        <div class="reel-card">
-          <div class="dish-emoji">${item.emoji || '🏪'}</div>
-          <div class="dish-name-wrap">
-            <div class="${titleClass}">${item.name}</div>
-          </div>
-          <div class="dish-badges">
-            ${matchBadge}
-            ${thirdBadge}
-            <span class="badge badge-mode">📍 距你 ${formatDistance(item.distance)}</span>
-          </div>
-        </div>
-      `;
-    }
-
     const isTakeout = item.modes.includes('takeout') && !item.modes.includes('cook');
     let modeLabel = '🍳 自己做';
     let modeBadgeClass = 'badge badge-mode';
@@ -2173,7 +1214,6 @@
 
   // 提纯搜索关键词：去掉多个竞品品牌空格叠加（如“三米粥铺 曼玲粥”只取“三米粥铺”）与加号套餐名，避免地图/外卖搜出0结果
   function extractPrimaryKeyword(item) {
-    if (item.isRealShop) return item.name.trim();
     const rawKw = String(item.searchKeyword || item.name || '').trim();
     const firstToken = rawKw.split(/[\s+/、，,]+/).filter(Boolean)[0] || rawKw;
     return firstToken.replace(/(套餐|双拼|单人餐)$/, '').trim() || rawKw;
@@ -2181,57 +1221,28 @@
 
   function buildTakeoutLinks(item) {
     const primaryKw = extractPrimaryKeyword(item);
-    const inJapan = state.location.ready && isLikelyJapan(state.location.lat, state.location.lng, state.location.label);
-
-    if (inJapan) {
-      const q = encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : primaryKw);
-      return {
-        isChina: false,
-        cleanKeyword: primaryKw,
-        mapLabel: '🗺️ Google地图',
-        mapUrl: `https://www.google.com/maps/search/?api=1&query=${q}`,
-        mapScheme: '',
-        primaryDeliveryLabel: '🛵 Uber Eats',
-        primaryDeliveryUrl: `https://www.ubereats.com/jp/search?q=${encodeURIComponent(primaryKw)}`,
-        primaryDeliveryScheme: '',
-        secondaryDeliveryLabel: '🍱 出前館',
-        secondaryDeliveryUrl: `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(primaryKw)}`,
-        secondaryDeliveryScheme: ''
-      };
-    }
-
-    // 中国大陆：拼接当前定位城市前缀，确保高德/百度地图精准搜当前城市周边，绝不再跳已失效的 i.meituan / h5.ele.me 死链！
-    const cityPrefix = state.location.city && !/^\d/.test(state.location.city) ? `${state.location.city} ` : '';
-    const mapQuery = encodeURIComponent(`${cityPrefix}${primaryKw}`);
-    const baiduMapUrl = `https://map.baidu.com/search/${mapQuery}/`;
-
-    let mapUrl = `https://ditu.amap.com/search?query=${mapQuery}`;
-    let mapScheme = isIOSDevice()
-      ? `iosamap://poi?sourceApplication=whattoeat&name=${encodeURIComponent(primaryKw)}`
-      : `androidamap://poi?sourceApplication=whattoeat&keywords=${encodeURIComponent(primaryKw)}&dev=0`;
-
-    if (item.isRealShop && item.lat && item.lng) {
-      const pos = item.source === 'amap' ? { lat: item.lat, lng: item.lng } : wgs84ToGcj02(item.lat, item.lng);
-      mapUrl = `https://uri.amap.com/marker?position=${pos.lng.toFixed(6)},${pos.lat.toFixed(6)}&name=${encodeURIComponent(item.name)}&callnative=1`;
-      mapScheme = isIOSDevice()
-        ? `iosamap://viewMap?sourceApplication=whattoeat&poiname=${encodeURIComponent(item.name)}&lat=${pos.lat.toFixed(6)}&lon=${pos.lng.toFixed(6)}&dev=0`
-        : `androidamap://viewMap?sourceApplication=whattoeat&poiname=${encodeURIComponent(item.name)}&lat=${pos.lat.toFixed(6)}&lon=${pos.lng.toFixed(6)}&dev=0`;
-    }
-
+    const encodedKw = encodeURIComponent(primaryKw);
     const mobile = isMobileDevice();
+
+    // 纯关键词直达：定位完全交给用户自己的地图 / 外卖 App，不请求浏览器位置权限，不走任何代理接口
+    const mapUrl = `https://ditu.amap.com/search?query=${encodedKw}`;
+    const mapScheme = isIOSDevice()
+      ? `iosamap://poi?sourceApplication=whattoeat&name=${encodedKw}`
+      : `androidamap://poi?sourceApplication=whattoeat&keywords=${encodedKw}&dev=0`;
+    const baiduMapUrl = `https://map.baidu.com/search/${encodedKw}/`;
+
     return {
-      isChina: true,
       cleanKeyword: primaryKw,
       mapLabel: '🗺️ 高德地图',
       mapUrl,
       mapScheme,
-      // 手机端：点美团/饿了么直达原生 App（未装App回退百度地图周边搜店）；电脑端：美团/饿了么无PC下单页，直接走百度地图 & 百度外卖搜索（100%不白屏）
+      // 手机端：点美团/饿了么直达原生 App（未装 App 回退百度地图搜关键词）；电脑端走百度地图 & 百度外卖搜索
       primaryDeliveryLabel: mobile ? '🛵 美团App' : '🗺️ 百度地图',
       primaryDeliveryUrl: baiduMapUrl,
-      primaryDeliveryScheme: mobile ? `imeituan://www.meituan.com/search?q=${encodeURIComponent(primaryKw)}` : '',
+      primaryDeliveryScheme: mobile ? `imeituan://www.meituan.com/search?q=${encodedKw}` : '',
       secondaryDeliveryLabel: mobile ? '🔵 饿了么App' : '🔍 搜周边外卖',
-      secondaryDeliveryUrl: `https://www.baidu.com/s?wd=${encodeURIComponent(`${cityPrefix}${primaryKw} 外卖`)}`,
-      secondaryDeliveryScheme: mobile ? `eleme://search?keyword=${encodeURIComponent(primaryKw)}` : ''
+      secondaryDeliveryUrl: `https://www.baidu.com/s?wd=${encodeURIComponent(`${primaryKw} 外卖`)}`,
+      secondaryDeliveryScheme: mobile ? `eleme://search?keyword=${encodedKw}` : ''
     };
   }
 
@@ -2312,22 +1323,18 @@
       bindFeedbackEvents(item);
     } else {
       const links = buildTakeoutLinks(item);
-      const copyTarget = links.cleanKeyword || (item.isRealShop ? item.name : (item.searchKeyword || item.name));
-      const starText = item.rating ? `⭐${item.rating} · ` : '';
-      const distBadge = item.isRealShop
-        ? `${starText}${formatDistance(item.distance)}`
-        : state.location.label;
+      const copyTarget = links.cleanKeyword || item.searchKeyword || item.name;
 
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
-          <span>🏪 「<strong>${item.name}</strong>」· ${distBadge}</span>
+          <span>🛵 「<strong>${item.name}</strong>」· 搜索词：${copyTarget}</span>
           <div class="dock-header-right">
             ${buildFeedbackHTML(item)}
           </div>
         </div>
         <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenShopModal">
-            🏪 店铺与下单
+            🛵 下单与搜周边
           </button>
           <a href="${links.mapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnJumpMapQuick">
             ${links.mapLabel}
@@ -3054,140 +2061,54 @@
     }
   }
 
-  // 点击「看店铺与评价」弹出本页周边实店详情与同菜系清单弹窗
+  // 点击「下单与搜周边」弹出本页外卖关键词直达弹窗
   function openShopModal(item) {
     playSelectSound();
     recordTasteSignal('open_detail', { item });
-    const peerShops = (state.mode === 'takeout' ? getFilteredPool() : state.nearbyShops).filter(s => s.isRealShop);
-    const radiusKm = (state.radius / 1000).toFixed(0);
-    const cuisineLabel = state.cuisine === 'all' ? '全菜系' : state.cuisine;
-    const srcBadgeMap = {
-      google: '🌍 Google Places 星级库',
-      hotpepper: '🇯🇵 Hot Pepper 日本实店库',
-      amap: '🇨🇳 高德官方评分库',
-      osm: '🗺️ 免Key开放实店库'
-    };
-    const srcBadge = srcBadgeMap[item.source || state.nearbySource] || '周边实店库';
-    const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
+    const links = buildTakeoutLinks(item);
+    const copyTarget = links.cleanKeyword || item.searchKeyword || item.name;
 
-    modalEmoji.textContent = item.emoji || '🏪';
+    modalEmoji.textContent = item.emoji || '🛵';
     modalDishName.textContent = item.name;
     modalTags.innerHTML = `
       <span class="badge badge-cuisine">${item.cuisine}</span>
-      ${item.rating ? formatRatingBadge(item) : ''}
-      <span class="badge badge-flavor">${item.isRealShop ? srcBadge : '经典外卖套餐'}</span>
+      <span class="badge badge-mode">🛵 外卖点餐</span>
+      <span class="badge badge-flavor">${item.tag || '人气推荐'}</span>
     `;
 
-    const combosHTML = (item.combos || ['门店招牌单人工作套餐', '热门主食+小食/饮品套餐'])
-      .map(c => `<span class="combo-suggest-chip">🍽️ ${c}</span>`)
-      .join('');
-
-    const shopPhotoHTML = item.photoUrl
-      ? `<img src="${item.photoUrl}" alt="${item.name}" class="shop-hero-photo" loading="lazy" onerror="this.style.display='none'" />`
-      : '';
-
-    const ratingPill = item.rating
-      ? `<span class="meta-pill" style="border-color:rgba(250,204,21,0.55);color:#fef08a;">⭐ ${item.rating} 分${item.ratingCount ? `（${item.ratingCount}条评价）` : ''}</span>`
-      : '';
-
-    const budgetPill = item.budgetText
-      ? `<span class="meta-pill">💰 ${item.budgetText}</span>`
-      : item.cost
-        ? `<span class="meta-pill">💰 人均 ¥${item.cost}</span>`
-        : '';
-
-    const heroHTML = item.isRealShop
-      ? `
-        <div class="recipe-hero-banner">
-          ${shopPhotoHTML}
-          <div class="recipe-meta-pills">
-            ${ratingPill}
-            <span class="meta-pill">📍 距你 ${formatDistance(item.distance)}</span>
-            <span class="meta-pill">🛵 预计 ${item.estDeliveryMin} 分钟送达</span>
-            ${budgetPill}
-          </div>
-          <div class="recipe-intro-text">
-            📍 门店位置：<strong>${item.address || `${state.location.label} ${radiusKm}km 商圈内`}</strong>
-            ${item.openTime ? `<br/>🕒 营业时间：${item.openTime}` : ''}
-          </div>
-          <div>
-            <div class="recipe-block-header" style="margin-bottom:6px;">
-              <span class="recipe-block-title">🍱 进店/外卖必点参考</span>
-            </div>
-            <div class="combo-suggest-chips">${combosHTML}</div>
-          </div>
+    const heroHTML = `
+      <div class="recipe-hero-banner">
+        <div class="recipe-meta-pills">
+          <span class="meta-pill">🔍 搜索关键词：<strong>${copyTarget}</strong></span>
+          <span class="meta-pill">📍 定位由你的地图 / 外卖软件自动获取</span>
         </div>
-      `
-      : `
-        <div class="recipe-hero-banner">
-          <div class="recipe-meta-pills">
-            <span class="meta-pill">📍 ${state.location.label} ${radiusKm}km 内暂未扫到该细分菜系实店</span>
-            <span class="meta-pill">💡 点 ⚙️ 可配 Google Places（带星级）或日本 Hot Pepper（免费）</span>
-          </div>
+        <div class="recipe-intro-text">
+          点击下方按钮将自动填入「<strong>${copyTarget}</strong>」并同步复制到剪贴板，打开高德 / 百度地图或美团 / 饿了么即可直接查看你当前定位周边的门店。
         </div>
-      `;
+      </div>
+    `;
 
-    const shopRowsHTML = peerShops
-      .slice(0, 40)
-      .map(
-        (shop, idx) => `
-        <div class="nearby-shop-row ${shop.name === item.name ? 'selected-shop' : ''}" data-shop-idx="${idx}">
-          <div class="nearby-shop-top">
-            <span class="nearby-shop-name">${shop.emoji} ${shop.name}</span>
-            <span class="nearby-shop-meta-right">
-              ${shop.rating ? `<span class="nearby-shop-star">⭐ ${shop.rating}</span>` : ''}
-              <span class="nearby-shop-dist">${formatDistance(shop.distance)}</span>
-            </span>
-          </div>
-          <div class="nearby-shop-bottom">
-            <span class="nearby-shop-addr">📍 ${shop.address || '周边商圈'}</span>
-            <span class="nearby-shop-tag">${shop.cuisine}</span>
-          </div>
-        </div>
-      `
-      )
-      .join('');
-
-    const directoryHTML =
-      peerShops.length > 0
-        ? `
-        <div>
-          <div class="recipe-block-header">
-            <span class="recipe-block-title">🏪 周围 ${radiusKm}km 内「${cuisineLabel}」真实店铺（共 ${peerShops.length} 家）</span>
-            <span class="recipe-block-sub">点击可切换查看</span>
-          </div>
-          <div class="shop-list-grid">${shopRowsHTML}</div>
-        </div>
-      `
-        : '';
-
-    const recruitCreditHTML =
-      item.source === 'hotpepper' || state.nearbySource === 'hotpepper'
-        ? `<div class="recruit-credit">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener noreferrer">ホットペッパーグルメ Webサービス</a></div>`
-        : '';
-
-    const links = buildTakeoutLinks(item);
     const jumpBarHTML = `
       <div>
         <div class="recipe-block-header" style="margin-bottom:8px;">
-          <span class="recipe-block-title">🚀 一键直达地图 / 外卖软件搜索</span>
-          <span class="recipe-block-sub">点击跳转时自动复制店名</span>
+          <span class="recipe-block-title">🚀 一键带关键词直达地图 / 外卖软件</span>
+          <span class="recipe-block-sub">自动复制关键词，无需手动打字</span>
         </div>
         <div class="shop-jump-bar">
           <a href="${links.mapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnModalJumpMap">${links.mapLabel}</a>
           <a href="${links.primaryDeliveryUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action" id="btnModalJumpPrimary">${links.primaryDeliveryLabel}</a>
           <a href="${links.secondaryDeliveryUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn eleme-action" id="btnModalJumpSecondary">${links.secondaryDeliveryLabel}</a>
-          <button type="button" class="action-link-btn" id="btnModalCopyInline">📋 复制店名</button>
+          <button type="button" class="action-link-btn" id="btnModalCopyInline">📋 复制关键词</button>
         </div>
       </div>
     `;
 
     modalBody.scrollTop = 0;
-    modalBody.innerHTML = heroHTML + jumpBarHTML + directoryHTML + recruitCreditHTML;
+    modalBody.innerHTML = heroHTML + jumpBarHTML;
 
     document.getElementById('btnModalJumpMap')?.addEventListener('click', e => {
       recordTasteSignal('open_detail', { item });
-      openAppWithFallback(e, links.mapScheme, links.mapUrl, '', links.mapLabel);
+      openAppWithFallback(e, links.mapScheme, links.mapUrl, copyTarget, links.mapLabel);
     });
     document.getElementById('btnModalJumpPrimary')?.addEventListener('click', e => {
       recordTasteSignal('copy', { item });
@@ -3203,23 +2124,9 @@
       silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」`);
     });
 
-    modalBody.querySelectorAll('.nearby-shop-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const shop = peerShops[Number(row.dataset.shopIdx)];
-        if (!shop) return;
-        state.currentDish = shop;
-        slotReel.style.transition = 'none';
-        slotReel.style.transform = 'translate3d(0, 0, 0)';
-        slotReel.innerHTML = createReelCardHTML(shop);
-        renderResultDock(shop);
-        addToHistory(shop);
-        openShopModal(shop);
-      });
-    });
-
     modalFooter.style.gridTemplateColumns = '1fr 1fr';
     modalFooter.innerHTML = `
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 复制店名去外卖软件搜索</button>
+      <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 复制关键词去外卖软件粘贴</button>
       <button type="button" class="action-link-btn" id="btnModalDoneShop">✅ 关闭窗口</button>
     `;
 
@@ -3228,8 +2135,8 @@
       recordTasteSignal('copy', { item });
       navigator.clipboard
         .writeText(copyTarget)
-        .then(() => showToast(`✅ 已复制「${copyTarget}」，可直接去 Uber Eats / 美团 / 饿了么粘贴下单`))
-        .catch(() => showToast(`✅ 店铺名：${copyTarget}`));
+        .then(() => showToast(`✅ 已复制「${copyTarget}」，可直接去美团 / 饿了么 / 地图粘贴搜索`))
+        .catch(() => showToast(`✅ 搜索词：${copyTarget}`));
     });
     document.getElementById('btnModalDoneShop')?.addEventListener('click', closeRecipeModal);
 
@@ -3240,28 +2147,6 @@
   function closeRecipeModal() {
     recipeModal.classList.remove('open');
     recipeModal.setAttribute('aria-hidden', 'true');
-  }
-
-  function openSourceModal() {
-    playSelectSound();
-    if (googleKeyInput) googleKeyInput.value = state.googleKey;
-    if (hotpepperKeyInput) hotpepperKeyInput.value = state.hotpepperKey;
-    if (amapKeyInput) amapKeyInput.value = state.amapKey;
-
-    const activeSources = [];
-    if (state.googleKey) activeSources.push('Google星级');
-    if (state.hotpepperKey) activeSources.push('日本HotPepper');
-    if (state.amapKey) activeSources.push('高德评分');
-    sourceStatusBadge.textContent = activeSources.length > 0
-      ? `已启用：${activeSources.join(' + ')}`
-      : '当前：免Key免费周边扫描（填Key解锁星级评价）';
-    sourceModal.classList.add('open');
-    sourceModal.setAttribute('aria-hidden', 'false');
-  }
-
-  function closeSourceModal() {
-    sourceModal.classList.remove('open');
-    sourceModal.setAttribute('aria-hidden', 'true');
   }
 
   // =========================================================================
@@ -3529,11 +2414,6 @@
       `;
       syncUI();
       renderHistoryList();
-
-      // 切换到点外卖时，直接由用户点击触发浏览器位置授权弹窗
-      if (state.mode === 'takeout' && !state.location.ready) {
-        requestBrowserLocation();
-      }
     }
   });
 
@@ -3548,80 +2428,11 @@
     }
   });
 
-  radiusSelect.addEventListener('change', () => {
-    playSelectSound();
-    state.radius = parseInt(radiusSelect.value, 10) || 3000;
-    if (state.location.ready) {
-      scanNearbyShops(true);
-    } else {
-      requestBrowserLocation();
-    }
-  });
-
   btnDraw.addEventListener('click', () => {
-    // 仅在尚未尝试授权且未拒绝时请求一次定位；如果用户拒绝了定位或定位失败，绝不卡死抽卡按钮，直接用外卖套餐库开抽！
-    if (state.mode === 'takeout' && !state.location.ready && !state.location.denied && !state.location.locating) {
-      playSelectSound();
-      requestBrowserLocation(() => {
-        if (!state.isSpinning) spinSlotMachine();
-      });
-      return;
-    }
     spinSlotMachine();
   });
 
-  btnRelocate.addEventListener('click', () => {
-    playSelectSound();
-    requestBrowserLocation();
-  });
-
-  btnSourceConfig.addEventListener('click', openSourceModal);
-  btnCloseSourceModal.addEventListener('click', closeSourceModal);
-  sourceModal.addEventListener('click', e => {
-    if (e.target === sourceModal) closeSourceModal();
-  });
-
-  btnSaveSource.addEventListener('click', () => {
-    const gKey = (googleKeyInput?.value || '').trim();
-    const hKey = (hotpepperKeyInput?.value || '').trim();
-    const aKey = (amapKeyInput?.value || '').trim();
-
-    state.googleKey = gKey;
-    state.hotpepperKey = hKey;
-    state.amapKey = aKey;
-
-    if (gKey) localStorage.setItem('food_rec_google_key', gKey);
-    else localStorage.removeItem('food_rec_google_key');
-
-    if (hKey) localStorage.setItem('food_rec_hotpepper_key', hKey);
-    else localStorage.removeItem('food_rec_hotpepper_key');
-
-    if (aKey) localStorage.setItem('food_rec_amap_key', aKey);
-    else localStorage.removeItem('food_rec_amap_key');
-
-    closeSourceModal();
-    const enabled = [gKey && 'Google星级', hKey && '日本HotPepper', aKey && '高德评分'].filter(Boolean);
-    showToast(enabled.length > 0 ? `✅ 已保存并启用：${enabled.join(' + ')}` : '✅ 已切换至免Key默认周边扫描');
-    if (state.location.ready) scanNearbyShops(true);
-    else if (state.mode === 'takeout') requestBrowserLocation();
-  });
-
-  btnResetSource.addEventListener('click', () => {
-    state.googleKey = '';
-    state.hotpepperKey = '';
-    state.amapKey = '';
-    if (googleKeyInput) googleKeyInput.value = '';
-    if (hotpepperKeyInput) hotpepperKeyInput.value = '';
-    if (amapKeyInput) amapKeyInput.value = '';
-    localStorage.removeItem('food_rec_google_key');
-    localStorage.removeItem('food_rec_hotpepper_key');
-    localStorage.removeItem('food_rec_amap_key');
-    closeSourceModal();
-    showToast('🔄 已清空本地 API Key，恢复默认周边扫描');
-    if (state.location.ready) scanNearbyShops(true);
-  });
-
-  // 离线习惯画像 & 在线 AI 分析事件绑定
+  // 离线习惯画像事件绑定
   document.querySelectorAll('.btn-open-taste').forEach(btn => {
     btn.addEventListener('click', openTasteModal);
   });
@@ -3687,27 +2498,10 @@
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (recipeModal.classList.contains('open')) closeRecipeModal();
-      if (sourceModal.classList.contains('open')) closeSourceModal();
       if (tasteModal?.classList.contains('open')) closeTasteModal();
     }
   });
 
-  // 初始化：检查权限状态后自动向浏览器请求位置授权（若已拒绝则不死循环，避免 iOS Safari 报错）
+  // 初始化
   syncUI();
-  setTimeout(async () => {
-    if (state.location.ready || state.location.locating) return;
-    try {
-      if (navigator.permissions && navigator.permissions.query) {
-        const perm = await navigator.permissions.query({ name: 'geolocation' });
-        if (perm.state === 'denied') {
-          state.location.denied = true;
-          locDot.classList.add('error');
-          locText.textContent = '浏览器曾拒绝定位 · 点地址栏左侧图标可重新开启，或直接抽外卖';
-          syncUI();
-          return;
-        }
-      }
-    } catch (_) {}
-    requestBrowserLocation(null, true);
-  }, 300);
 })();

@@ -49,27 +49,10 @@
     meal: 'breakfast',
     mode: 'cook', // 'cook' | 'lazy' | 'takeout' | 'guess'
     cuisine: 'all',
-    radius: 3000,
-    googleKey: localStorage.getItem('jp_food_google_key') || localStorage.getItem('food_rec_google_key') || '',
-    hotpepperKey: localStorage.getItem('jp_food_hotpepper_key') || localStorage.getItem('food_rec_hotpepper_key') || '',
     isSpinning: false,
     currentDish: null,
     displayedPoolCount: 0,
-    history: [],
-    nearbyShops: [],
-    nearbySource: 'osm',
-    nearbyLoading: false,
-    nearbyScannedKey: '',
-    location: {
-      lat: null,
-      lng: null,
-      city: '',
-      district: '',
-      label: '現在地',
-      ready: false,
-      denied: false,
-      locating: false
-    }
+    history: []
   };
 
   // ローカル時刻で朝・昼・夜を自動プリセット
@@ -104,11 +87,6 @@
   const dockIdleText = document.getElementById('dockIdleText');
   const dockResult = document.getElementById('dockResult');
   const resultActionContent = document.getElementById('resultActionContent');
-  const locDot = document.getElementById('locDot');
-  const locText = document.getElementById('locText');
-  const btnRelocate = document.getElementById('btnRelocate');
-  const btnSourceConfig = document.getElementById('btnSourceConfig');
-  const radiusSelect = document.getElementById('radiusSelect');
   const historyList = document.getElementById('historyList');
   const fxCanvas = document.getElementById('fxCanvas');
 
@@ -119,14 +97,6 @@
   const modalBody = document.getElementById('modalBody');
   const modalFooter = document.getElementById('modalFooter');
   const btnCloseModal = document.getElementById('btnCloseModal');
-
-  const sourceModal = document.getElementById('sourceModal');
-  const sourceStatusBadge = document.getElementById('sourceStatusBadge');
-  const googleKeyInput = document.getElementById('googleKeyInput');
-  const hotpepperKeyInput = document.getElementById('hotpepperKeyInput');
-  const btnCloseSourceModal = document.getElementById('btnCloseSourceModal');
-  const btnSaveSource = document.getElementById('btnSaveSource');
-  const btnResetSource = document.getElementById('btnResetSource');
 
   const tasteModal = document.getElementById('tasteModal');
   const tasteModalBody = document.getElementById('tasteModalBody');
@@ -648,404 +618,6 @@
   }
 
   // =========================================================================
-  // 4. 日本特化・周辺実店舗ジャンル分類＆マルチAPI検索エンジン（7大ジャンル対応）
-  // =========================================================================
-  const jpShopClassifier = [
-    {
-      cuisine: '麺類・パスタ',
-      emoji: '🍜',
-      tag: '麺類・パスタ',
-      combos: ['特製味玉ラーメン＋半ライス', '明太子パスタ＆サラダセット', 'かけうどん＋かしわ天'],
-      regex: /(ラーメン|らーめん|拉麺|つけ麺|油そば|まぜそば|家系|二郎|一蘭|一風堂|天下一品|幸楽苑|日高屋|うどん|丸亀製麺|はなまる|そば|蕎麦|富士そば|ゆで太郎|パスタ|五右衛門|鎌倉パスタ|ramen|noodle|udon|soba|pasta)/i
-    },
-    {
-      cuisine: '韓国・エスニック',
-      emoji: '🍛',
-      tag: '韓国・カレー・アジア',
-      combos: ['ロースカツカレー', 'バターチキン＆チーズナン', 'スンドゥブチゲ・ビビンバ定食'],
-      regex: /(カレー|CoCo壱|ココイチ|スープカレー|インド|ネパール|タイ|タイ料理|ベトナム|フォー|エスニック|韓国|サムギョプサル|スンドゥブ|ビビンバ|チヂミ|ヤンニョム|タッカルビ|curry|indian|thai|vietnamese|korean)/i
-    },
-    {
-      cuisine: '中華・台湾料理',
-      emoji: '🥟',
-      tag: '中華・台湾料理',
-      combos: ['焼餃子＆炒飯セット', '麻婆豆腐定食', '油淋鶏＆小籠包セット'],
-      regex: /(中華|餃子|王将|バーミヤン|四川|麻婆|担々|点心|飲茶|小籠包|台湾|魯肉飯|chinese)/i
-    },
-    {
-      cuisine: 'ガッツリ肉・揚げ物',
-      emoji: '🥩',
-      tag: '焼肉・とんかつ・肉',
-      combos: ['カルビ＆ハラミ焼肉定食', 'ロースかつ定食', '特製からあげ定食'],
-      regex: /(焼肉|ホルモン|ステーキ|とんかつ|トンカツ|和幸|さぼてん|からあげ|からやま|から好し|焼鳥|焼き鳥|鳥貴族|串カツ|ケンタッキー|KFC|yakiniku|steak|tonkatsu|bbq)/i
-    },
-    {
-      cuisine: '洋食・欧米料理',
-      emoji: '🍝',
-      tag: '洋食・イタリアン・欧米',
-      combos: ['ハンバーグ＆ライスセット', 'チーズバーガー＆ポテトセット', 'マルゲリータピザ＆サラダ'],
-      regex: /(サイゼリヤ|ガスト|ジョナサン|デニーズ|ロイヤルホスト|びっくりドンキー|マクドナルド|モスバーガー|バーガーキング|ドミノ|ピザーラ|イタリアン|フレンチ|洋食|オムライス|ピザ|ハンバーガー|ファミレス|ハンバーグ|メキシカン|タコス|italian|french|burger|pizza|mexican)/i
-    },
-    {
-      cuisine: '軽食・朝ごはん・サラダ',
-      emoji: '🥪',
-      tag: 'カフェ・軽食・サラダ',
-      combos: ['サンドイッチ＆カフェセット', 'パワーサラダボウル', 'モーニングトーストセット'],
-      regex: /(サブウェイ|サラダ|サンドイッチ|ベーカリー|パン|コメダ|ベローチェ|サンマルク|スープストック|Soup Stock|sandwich|salad|bakery)/i
-    }
-  ];
-
-  function classifyNearbyShop(rawShop) {
-    const combined = `${rawShop.name} ${rawShop.rawCuisine || ''} ${rawShop.rawType || ''} ${rawShop.brand || ''}`;
-    let matchedCuisine = '和食・丼・鍋';
-    let emoji = '🍱';
-    let tag = '和食・丼・定食';
-    let combos = ['お店自慢の日替わり和定食', '人気丼＋みそ汁セット', 'テイクアウトおすすめセット'];
-
-    for (const rule of jpShopClassifier) {
-      if (rule.regex.test(combined)) {
-        matchedCuisine = rule.cuisine;
-        emoji = rule.emoji;
-        tag = rule.tag;
-        combos = rule.combos;
-        break;
-      }
-    }
-
-    if (matchedCuisine === '和食・丼・鍋') {
-      if (/(寿司|すし|鮨|スシロー|くら寿司|はま寿司|かっぱ寿司|回転寿司|sushi)/i.test(combined)) {
-        emoji = '🍣';
-        tag = '寿司・海鮮';
-        combos = ['人気にぎり盛り合わせ', 'サーモン＆マグロ丼セット'];
-      } else if (/(吉野家|松屋|すき家|なか卯|牛丼|親子丼|カツ丼|かつや|天丼|てんや|海鮮丼)/.test(combined)) {
-        emoji = '🥣';
-        tag = '丼もの';
-        combos = ['牛丼並盛＋みそ汁おしんこセット', 'ふわとろ親子丼・カツ丼'];
-      } else if (/(鍋|しゃぶしゃぶ|すき焼き|もつ鍋|おでん)/.test(combined)) {
-        emoji = '🍲';
-        tag = '鍋・しゃぶしゃぶ';
-        combos = ['一人しゃぶしゃぶセット', '博多もつ鍋・おでん盛り'];
-      } else if (/(居酒屋|酒場|磯丸)/.test(combined)) {
-        emoji = '🏮';
-        tag = '居酒屋・和食';
-        combos = ['焼魚・お刺身定食', '唐揚げ＆焼き鳥テイクアウト'];
-      }
-    }
-
-    const isBreakfastFriendly = /(吉野家|松屋|すき家|なか卯|マクドナルド|モスバーガー|ガスト|デニーズ|ジョナサン|コメダ|富士そば|ゆで太郎|やよい軒|サブウェイ|ベーカリー|パン|おにぎり|fast_food|burger|bakery)/i.test(combined);
-    const isDinnerOnly = /(居酒屋|鳥貴族|酒場|ホルモン|もつ鍋|バー)/i.test(rawShop.name);
-
-    let meals = ['lunch', 'dinner'];
-    if (isBreakfastFriendly) meals = ['breakfast', 'lunch', 'dinner'];
-    else if (isDinnerOnly) meals = ['dinner'];
-
-    const estDeliveryMin = Math.max(15, Math.min(50, Math.round(14 + (rawShop.distance || 500) / 140)));
-
-    return {
-      ...rawShop,
-      cuisine: matchedCuisine,
-      meals,
-      modes: ['takeout'],
-      isRealShop: true,
-      emoji,
-      tag,
-      combos,
-      estDeliveryMin
-    };
-  }
-
-  function haversineMeters(lat1, lng1, lat2, lng2) {
-    const R = 6371000;
-    const toRad = d => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-  }
-
-  // Google Maps JS SDK (Places New, language=ja)
-  let loadedGoogleKey = '';
-  function loadGoogleMapsSDK(apiKey) {
-    return new Promise((resolve, reject) => {
-      if (window.google?.maps?.importLibrary && loadedGoogleKey === apiKey) {
-        resolve();
-        return;
-      }
-      const existing = document.getElementById('gmaps-places-sdk');
-      if (existing) existing.remove();
-      const script = document.createElement('script');
-      script.id = 'gmaps-places-sdk';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&language=ja&loading=async`;
-      script.async = true;
-      script.defer = true;
-      const timer = setTimeout(() => reject(new Error('Google Maps SDK タイムアウト')), 9000);
-      script.onload = () => {
-        clearTimeout(timer);
-        loadedGoogleKey = apiKey;
-        resolve();
-      };
-      script.onerror = () => {
-        clearTimeout(timer);
-        reject(new Error('Google Maps SDK の読み込みに失敗しました'));
-      };
-      document.head.appendChild(script);
-    });
-  }
-
-  async function fetchDirectGooglePlaces(lat, lng, radius, apiKey) {
-    await loadGoogleMapsSDK(apiKey);
-    const { Place, SearchNearbyRankPreference } = await window.google.maps.importLibrary('places');
-    const request = {
-      fields: ['displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'types', 'primaryTypeDisplayName', 'priceLevel', 'photos'],
-      locationRestriction: { center: { lat, lng }, radius: Math.min(Math.max(radius, 500), 5000) },
-      includedPrimaryTypes: [
-        'restaurant', 'fast_food_restaurant', 'ramen_restaurant', 'sushi_restaurant',
-        'japanese_restaurant', 'chinese_restaurant', 'korean_restaurant', 'italian_restaurant',
-        'hamburger_restaurant', 'pizza_restaurant', 'barbecue_restaurant', 'meal_takeaway'
-      ],
-      maxResultCount: 20,
-      rankPreference: SearchNearbyRankPreference ? SearchNearbyRankPreference.POPULARITY : 'POPULARITY'
-    };
-
-    const { places } = await Place.searchNearby(request);
-    if (!Array.isArray(places) || places.length === 0) return [];
-
-    const priceMap = {
-      FREE: '無料',
-      INEXPENSIVE: 'お手頃（〜1,000円）',
-      MODERATE: '標準（1,000〜2,500円）',
-      EXPENSIVE: 'やや高め',
-      VERY_EXPENSIVE: '高級'
-    };
-
-    const shops = places
-      .filter(p => p.displayName)
-      .map(p => {
-        const pLat = typeof p.location?.lat === 'function' ? p.location.lat() : p.location?.lat || lat;
-        const pLng = typeof p.location?.lng === 'function' ? p.location.lng() : p.location?.lng || lng;
-        let photoUrl = '';
-        try {
-          if (p.photos?.[0]?.getURI) photoUrl = p.photos[0].getURI({ maxWidth: 640 });
-        } catch (_) {}
-        return {
-          name: String(p.displayName).trim(),
-          address: p.formattedAddress || '周辺エリア',
-          distance: haversineMeters(lat, lng, pLat, pLng),
-          rawType: p.primaryTypeDisplayName || (p.types || []).join(' '),
-          rawCuisine: (p.types || []).join(' '),
-          rating: p.rating ? Number(p.rating).toFixed(1) : '',
-          ratingCount: p.userRatingCount || 0,
-          budgetText: priceMap[p.priceLevel] || '',
-          photoUrl,
-          lat: pLat,
-          lng: pLng,
-          source: 'google'
-        };
-      });
-
-    shops.sort((a, b) => (parseFloat(b.rating || 0) - parseFloat(a.rating || 0)) || (a.distance - b.distance));
-    return shops;
-  }
-
-  // Recruit Hot Pepper Gourmet API (JSONP)
-  function fetchDirectHotPepperJSONP(lat, lng, radius, apiKey) {
-    return new Promise((resolve, reject) => {
-      const range = radius <= 500 ? 2 : radius <= 1000 ? 3 : radius <= 2000 ? 4 : 5;
-      const cbName = `__jp_hp_cb_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-      const script = document.createElement('script');
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        if (script.parentNode) script.parentNode.removeChild(script);
-        try {
-          delete window[cbName];
-        } catch (_) {
-          window[cbName] = undefined;
-        }
-      };
-
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new Error('ホットペッパーAPI タイムアウト'));
-      }, 9000);
-
-      window[cbName] = data => {
-        cleanup();
-        const rawList = data?.results?.shop;
-        if (!Array.isArray(rawList)) {
-          reject(new Error(data?.results?.error?.[0]?.message || '店舗データが見つかりませんでした'));
-          return;
-        }
-        const shops = rawList
-          .filter(s => s.name)
-          .map(s => {
-            const sLat = parseFloat(s.lat) || lat;
-            const sLng = parseFloat(s.lng) || lng;
-            return {
-              name: String(s.name).trim(),
-              address: s.address || s.station_name || '周辺エリア',
-              distance: haversineMeters(lat, lng, sLat, sLng),
-              rawType: s.genre?.name || 'restaurant',
-              rawCuisine: `${s.genre?.name || ''} ${s.sub_genre?.name || ''} ${s.catch || ''}`,
-              budgetText: s.budget?.average || s.budget?.name || '',
-              openTime: s.open || '',
-              photoUrl: s.photo?.pc?.l || s.photo?.mobile?.l || '',
-              shopUrl: s.urls?.pc || '',
-              lat: sLat,
-              lng: sLng,
-              source: 'hotpepper'
-            };
-          });
-        shops.sort((a, b) => a.distance - b.distance);
-        resolve(shops);
-      };
-
-      script.onerror = () => {
-        cleanup();
-        reject(new Error('ホットペッパーAPI 接続エラー'));
-      };
-      script.src = `https://webservice.recruit.co.jp/hotpepper/gourmet/v1/?key=${encodeURIComponent(apiKey)}&lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&range=${range}&count=60&format=jsonp&callback=${cbName}`;
-      document.head.appendChild(script);
-    });
-  }
-
-  // OpenStreetMap Overpass (タイムアウト7秒付き)
-  async function fetchDirectOverpass(lat, lng, radius) {
-    const radiusKm = Math.max(0.5, Math.min(5, radius / 1000));
-    const dLat = radiusKm / 111;
-    const dLng = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
-    const bbox = `${(lat - dLat).toFixed(4)},${(lng - dLng).toFixed(4)},${(lat + dLat).toFixed(4)},${(lng + dLng).toFixed(4)}`;
-    const q = `[out:json][timeout:6];node["amenity"~"restaurant|fast_food"](${bbox});out 140;`;
-    const skipCafeRegex = /(スターバックス|Starbucks|ドトール|タリーズ|珈琲館|喫茶|カフェ|Cafe|Coffee|タピオカ|アイス|サーティワン|バー|Bar|Pub|スナック|カラオケ)/i;
-
-    const endpoints = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter'
-    ];
-
-    let data = null;
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(`${ep}?data=${encodeURIComponent(q)}`, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined
-        });
-        if (res.ok) {
-          data = await res.json();
-          if (data && Array.isArray(data.elements)) break;
-        }
-      } catch (_) {}
-    }
-    if (!data) throw new Error('OSM タイムアウト');
-
-    const seen = new Set();
-    const shops = [];
-    for (const el of data.elements || []) {
-      const tags = el.tags || {};
-      const name = (tags['name:ja'] || tags.name || tags['name:en'] || '').trim();
-      if (!name || name.length < 2 || skipCafeRegex.test(name)) continue;
-      if (/(coffee_shop|ice_cream|bubble_tea)/i.test(tags.cuisine || '')) continue;
-      const dist = haversineMeters(lat, lng, el.lat, el.lon);
-      if (dist > radius) continue;
-      const key = `${name}_${Math.round(dist / 200)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const addr = [tags['addr:city'], tags['addr:suburb'] || tags['addr:quarter'], tags['addr:block_number']].filter(Boolean).join(' ');
-      shops.push({
-        name,
-        address: addr || '周辺エリア',
-        distance: dist,
-        rawType: tags.amenity || 'restaurant',
-        rawCuisine: tags.cuisine || '',
-        brand: tags.brand || '',
-        lat: el.lat,
-        lng: el.lon,
-        source: 'osm'
-      });
-    }
-    shops.sort((a, b) => a.distance - b.distance);
-    return shops;
-  }
-
-  async function scanNearbyShops(force = false) {
-    if (!state.location.lat || !state.location.lng) return;
-    const keySig = `${state.googleKey ? 'g' : ''}${state.hotpepperKey ? 'h' : ''}` || 'free';
-    const scanKey = `${state.location.lat.toFixed(3)}_${state.location.lng.toFixed(3)}_${state.radius}_${keySig}`;
-    if (!force && state.nearbyScannedKey === scanKey && state.nearbyShops.length > 0) return;
-
-    state.nearbyLoading = true;
-    locDot.classList.add('loading');
-    locText.textContent = `${state.location.label} ${state.radius / 1000}km圏内を検索中...`;
-
-    const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
-
-    try {
-      let rawShops = [];
-      let source = 'osm';
-
-      // Vercel サーバーレスAPI優先（キー設定不要でGoogle星評価・ホットペッパー取得）
-      if (hasServerApi && !state.googleKey && !state.hotpepperKey) {
-        try {
-          const res = await fetch(`/api/nearby?lat=${state.location.lat}&lng=${state.location.lng}&radius=${state.radius}&lang=ja`, {
-            signal: AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.ok && Array.isArray(data.shops) && data.shops.length > 0) {
-              rawShops = data.shops;
-              source = data.source || 'google';
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (rawShops.length === 0 && state.googleKey) {
-        try {
-          rawShops = await fetchDirectGooglePlaces(state.location.lat, state.location.lng, state.radius, state.googleKey);
-          source = 'google';
-        } catch (err) {
-          showToast(`⚠️ Google Places: ${err.message}`);
-        }
-      }
-
-      if (rawShops.length === 0 && state.hotpepperKey) {
-        try {
-          rawShops = await fetchDirectHotPepperJSONP(state.location.lat, state.location.lng, state.radius, state.hotpepperKey);
-          source = 'hotpepper';
-        } catch (err) {
-          showToast(`⚠️ ホットペッパー: ${err.message}`);
-        }
-      }
-
-      if (rawShops.length === 0) {
-        rawShops = await fetchDirectOverpass(state.location.lat, state.location.lng, state.radius);
-        source = 'osm';
-      }
-
-      rawShops = rawShops.filter(s => s.distance == null || s.distance <= state.radius);
-
-      if (rawShops.length > 0) {
-        state.nearbyShops = rawShops.map(classifyNearbyShop);
-        state.nearbySource = source;
-        state.nearbyScannedKey = scanKey;
-        locDot.classList.remove('loading');
-        const srcMap = { google: 'Google星評価付', hotpepper: 'HotPepper店舗', osm: '周辺実店舗' };
-        locText.textContent = `${state.location.label} · ${state.nearbyShops.length}軒の${srcMap[source] || '実店舗'}を発見`;
-      } else {
-        throw new Error('周辺店舗が見つかりませんでした');
-      }
-    } catch (_) {
-      locDot.classList.remove('loading');
-      state.nearbyShops = [];
-      locText.textContent = `${state.location.label} · 定番チェーン・宅配候補で抽選（⚙️で実店舗検索可）`;
-    } finally {
-      state.nearbyLoading = false;
-      syncUI();
-    }
-  }
-
-  // =========================================================================
   // 5. 候補プール計算＆UI同期
   // =========================================================================
   function getGuessPool() {
@@ -1054,18 +626,15 @@
     const pushIfValid = item => {
       if (!item || !item.name || seen.has(item.name)) return;
       if (state.cuisine !== 'all' && state.cuisine !== '厳選' && item.cuisine !== state.cuisine) return;
-      if (state.cuisine === '厳選' && !item.aiPick && !(item.isRealShop && item.rating && parseFloat(item.rating) >= 4.0)) return;
+      if (state.cuisine === '厳選' && !item.aiPick) return;
       seen.add(item.name);
       candidates.push(item);
     };
 
     for (const d of staticDishes) {
-      if (d.meals?.includes(state.meal) && (d.modes?.includes('cook') || d.modes?.includes('lazy'))) {
+      if (d.meals?.includes(state.meal)) {
         pushIfValid(d);
       }
-    }
-    for (const s of state.nearbyShops) {
-      if (s.meals?.includes(state.meal)) pushIfValid(s);
     }
 
     let scored = candidates
@@ -1088,17 +657,6 @@
   function getFilteredPool() {
     if (state.mode === 'guess') return getGuessPool();
 
-    if (state.mode === 'takeout' && state.nearbyShops.length > 0) {
-      if (state.cuisine === '厳選') {
-        const topShops = state.nearbyShops.filter(s => s.meals.includes(state.meal) && (s.rating && parseFloat(s.rating) >= 4.0));
-        return topShops.length > 0 ? topShops : state.nearbyShops.slice(0, 18);
-      }
-      const exact = state.nearbyShops.filter(s => s.meals.includes(state.meal) && (state.cuisine === 'all' || s.cuisine === state.cuisine));
-      if (exact.length > 0) return exact;
-      const relaxed = state.nearbyShops.filter(s => state.cuisine === 'all' || s.cuisine === state.cuisine);
-      if (relaxed.length > 0) return relaxed;
-    }
-
     if (state.cuisine === '厳選') {
       const exactAi = staticDishes.filter(d => d.aiPick && d.meals.includes(state.meal) && d.modes.includes(state.mode));
       if (exactAi.length > 0) return exactAi;
@@ -1119,19 +677,10 @@
   }
 
   function updateCuisineChipCounts() {
-    const showRealCounts = state.mode === 'takeout' && state.nearbyShops.length > 0;
     cuisineGroup.querySelectorAll('.cuisine-chip').forEach(btn => {
       const c = btn.dataset.cuisine;
       const baseLabel = cuisineBaseLabels.get(c) || btn.textContent;
-      if (showRealCounts) {
-        let cnt = 0;
-        if (c === 'all') cnt = state.nearbyShops.length;
-        else if (c === '厳選') cnt = state.nearbyShops.filter(s => s.rating && parseFloat(s.rating) >= 4.0).length || Math.min(18, state.nearbyShops.length);
-        else cnt = state.nearbyShops.filter(s => s.cuisine === c).length;
-        btn.innerHTML = `${baseLabel}<span class="cuisine-chip-count">(${cnt})</span>`;
-      } else {
-        btn.textContent = baseLabel;
-      }
+      btn.textContent = baseLabel;
     });
   }
 
@@ -1139,8 +688,7 @@
   function animatePoolCount(targetCount) {
     if (countAnimId) cancelAnimationFrame(countAnimId);
     const startCount = state.displayedPoolCount || 0;
-    const isRealTakeout = state.mode === 'takeout' && state.nearbyShops.length > 0 && getFilteredPool()[0]?.isRealShop;
-    const unit = isRealTakeout ? '軒' : '品';
+    const unit = '品';
 
     poolCountEl.innerHTML = `候補 <b id="poolCountNum">${startCount}</b> ${unit}`;
     const numEl = document.getElementById('poolCountNum');
@@ -1207,22 +755,6 @@
     if (guessStatusLayer) guessStatusLayer.classList.toggle('active', state.mode === 'guess');
     updateGuessStatusSummary();
 
-    if (state.mode === 'takeout' && state.location.ready && !state.nearbyLoading && state.nearbyShops.length === 0 && !state.nearbyScannedKey) {
-      (async () => {
-        if (!state.location.city && state.location.lat && state.location.lng) {
-          try {
-            const data = await reverseGeocode(state.location.lat, state.location.lng);
-            const pref = data.principalSubdivision || '';
-            const city = data.city || data.locality || '';
-            state.location.city = pref;
-            state.location.district = city;
-            state.location.label = [pref, city].filter(Boolean).join('・') || state.location.label;
-          } catch (_) {}
-        }
-        scanNearbyShops();
-      })();
-    }
-
     updateCuisineChipCounts();
     const pool = getFilteredPool();
     animatePoolCount(pool.length);
@@ -1237,142 +769,17 @@
           tasteProfile.totalInteractions >= 3
             ? `❤️ ローカル履歴（${tasteProfile.totalDraws}回）から好みに合う一品を厳選します！`
             : '❤️ 抽選後に 👍/👎 を押すほど、あなた好みのメニューが出やすくなります';
-      } else if (!state.location.ready) {
-        dockIdleText.textContent = '📍 ブラウザの位置情報を許可すると、周辺のお店を検索してガチャできます';
       } else {
-        dockIdleText.textContent =
-          state.nearbyShops.length > 0
-            ? `周辺 ${state.radius / 1000}km圏内で ${state.nearbyShops.length}軒を発見！今すぐガチャを回そう`
-            : '位置情報取得済み · 「ガチャを回す」で今日の外食・デリバリーを決めよう！';
+        dockIdleText.textContent = '🛵 外食・宅配モード：当たった料理をキーワード入力済みで Googleマップ / Uber Eats / 出前館で検索！';
       }
     }
   }
 
   // =========================================================================
-  // 6. ブラウザ位置情報（デフォルト都市なし・純粋なブラウザ許可）
-  // =========================================================================
-  async function reverseGeocode(lat, lng) {
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=ja`;
-    const res = await fetch(url);
-    return res.json();
-  }
-
-  function requestBrowserLocation(onAuthorized, silentOnInit = false) {
-    if (state.location.locating) return;
-    if (!('geolocation' in navigator) || !window.isSecureContext) {
-      locDot.classList.remove('loading');
-      locDot.classList.add('error');
-      locText.textContent = !window.isSecureContext ? 'HTTPS環境でのみ位置情報が利用できます' : 'お使いのブラウザは位置情報APIに非対応です';
-      if (!silentOnInit) showToast('⚠️ 位置情報を取得できませんでした（定番メニューで抽選できます）');
-      return;
-    }
-
-    state.location.locating = true;
-    locDot.classList.remove('error');
-    locDot.classList.add('loading');
-    locText.textContent = 'ブラウザに位置情報の許可をリクエスト中...';
-
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        state.location.locating = false;
-        state.location.denied = false;
-        const { latitude, longitude } = pos.coords;
-        state.location.lat = latitude;
-        state.location.lng = longitude;
-        state.location.ready = true;
-        btnRelocate.textContent = '📍 再取得';
-        btnRelocate.classList.remove('loc-auth-btn');
-
-        // 外食・宅配モード以外ではAPIクォータ節約のため座標のみ保持し、切替時に検索する
-        if (state.mode !== 'takeout' && silentOnInit) {
-          state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-          locDot.classList.remove('loading');
-          locText.textContent = '現在地取得済み · 外食モード切替時に周辺検索します';
-          syncUI();
-          return;
-        }
-
-        try {
-          const data = await reverseGeocode(latitude, longitude);
-          const pref = data.principalSubdivision || '';
-          const city = data.city || data.locality || '';
-          state.location.city = pref;
-          state.location.district = city;
-          state.location.label = [pref, city].filter(Boolean).join('・') || `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-        } catch (_) {
-          state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-        }
-
-        if (state.mode === 'takeout') {
-          await scanNearbyShops(true);
-        }
-        if (typeof onAuthorized === 'function') onAuthorized();
-      },
-      err => {
-        state.location.locating = false;
-        state.location.ready = false;
-        if (err && err.code === 1) state.location.denied = true;
-        state.nearbyShops = [];
-        locDot.classList.remove('loading');
-        locDot.classList.add('error');
-        btnRelocate.textContent = '📍 再試行';
-        btnRelocate.classList.add('loc-auth-btn');
-
-        if (err && err.code === 1) {
-          locText.textContent = '位置情報未許可 · そのまま定番チェーンからガチャ可能です';
-          if (!silentOnInit) showToast('⚠️ 位置情報が未許可です（定番チェーン・宅配候補で抽選できます）');
-        } else {
-          locText.textContent = '現在地を取得できませんでした · 定番候補でガチャ可能です';
-          if (!silentOnInit) showToast('⚠️ 現在地取得失敗（定番候補で抽選できます）');
-        }
-        syncUI();
-      },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 180000 }
-    );
-  }
-
-  // =========================================================================
   // 7. スロットカード描画＆4段階ガチャ演出
   // =========================================================================
-  function formatDistance(meters) {
-    if (meters == null) return '周辺';
-    return meters >= 1000 ? `${(meters / 1000).toFixed(1)}km` : `${meters}m`;
-  }
-
-  function formatRatingBadge(item) {
-    if (!item.rating) return '';
-    const cnt = item.ratingCount ? ` (${item.ratingCount}件)` : '';
-    return `<span class="badge badge-rating">⭐ ${item.rating}${cnt}</span>`;
-  }
-
   function createReelCardHTML(item) {
     const titleClass = item.name.length > 12 ? 'dish-name combo-title' : 'dish-name';
-    if (item.isRealShop) {
-      const ratingHTML = formatRatingBadge(item);
-      const midBadge = ratingHTML
-        ? ratingHTML
-        : item.budgetText
-          ? `<span class="badge badge-flavor">💰 ${item.budgetText}</span>`
-          : `<span class="badge badge-flavor">目安 ${item.estDeliveryMin}分</span>`;
-      const leftBadge = state.mode === 'guess' && item._matchPct
-        ? `<span class="badge badge-match">❤️ 相性 ${item._matchPct}%</span>`
-        : `<span class="badge badge-cuisine">${item.cuisine}</span>`;
-
-      return `
-        <div class="reel-card">
-          <div class="dish-emoji">${item.emoji || '🏪'}</div>
-          <div class="dish-name-wrap">
-            <div class="${titleClass}">${item.name}</div>
-          </div>
-          <div class="dish-badges">
-            ${leftBadge}
-            ${midBadge}
-            <span class="badge badge-mode">📍 ${formatDistance(item.distance)}</span>
-          </div>
-        </div>
-      `;
-    }
-
     const isTakeout = item.modes.includes('takeout') && !item.modes.includes('cook');
     let modeLabel = '🍳 自炊';
     let modeBadgeClass = 'badge badge-mode';
@@ -1616,20 +1023,18 @@
       document.getElementById('btnCopyRecipeQuick')?.addEventListener('click', () => copyRecipeToClipboard(item));
       bindFeedbackEvents(item);
     } else {
-      const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
-      const starText = item.rating ? `⭐${item.rating} · ` : '';
-      const distBadge = item.isRealShop ? `${starText}${formatDistance(item.distance)}` : state.location.label;
-      const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : copyTarget)}`;
+      const copyTarget = extractJpKeyword(item);
+      const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(copyTarget)}`;
       const uberUrl = `https://www.ubereats.com/jp/search?q=${encodeURIComponent(copyTarget)}`;
 
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
-          <span>🏪 「<strong>${item.name}</strong>」· ${distBadge}</span>
+          <span>🛵 「<strong>${item.name}</strong>」· 検索語：${copyTarget}</span>
           <div class="dock-header-right">${buildFeedbackHTML(item)}</div>
         </div>
         <div class="action-btn-grid cols-3">
           <button type="button" class="action-link-btn primary-action" id="btnOpenShopModal">
-            🏪 店舗＆注文
+            🛵 検索＆注文
           </button>
           <a href="${gmapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnJpMapQuick">
             🗺️ Googleマップ
@@ -1640,6 +1045,11 @@
         </div>
       `;
       document.getElementById('btnOpenShopModal')?.addEventListener('click', () => openShopModal(item));
+      document.getElementById('btnJpMapQuick')?.addEventListener('click', () => {
+        playSelectSound();
+        recordTasteSignal('open_detail', { item });
+        navigator.clipboard?.writeText(copyTarget).catch(() => {});
+      });
       document.getElementById('btnJpUberQuick')?.addEventListener('click', () => {
         playSelectSound();
         recordTasteSignal('copy', { item });
@@ -1989,151 +1399,72 @@
     recipeModal.setAttribute('aria-hidden', 'false');
   }
 
+  function extractJpKeyword(item) {
+    const rawKw = String(item.searchKeyword || item.name || '').trim();
+    const firstToken = rawKw.split(/[\s+/・、，,]+/).filter(Boolean)[0] || rawKw;
+    return firstToken || rawKw;
+  }
+
   function openShopModal(item) {
     playSelectSound();
     recordTasteSignal('open_detail', { item });
-    const peerShops = (state.mode === 'takeout' ? getFilteredPool() : state.nearbyShops).filter(s => s.isRealShop);
-    const radiusKm = (state.radius / 1000).toFixed(0);
-    const cuisineLabel = state.cuisine === 'all' ? '全ジャンル' : state.cuisine;
-    const srcBadgeMap = {
-      google: '🌍 Google Places 星評価付',
-      hotpepper: '🇯🇵 ホットペッパーグルメ',
-      osm: '🗺️ オープン地図実店舗'
-    };
-    const srcBadge = srcBadgeMap[item.source || state.nearbySource] || '周辺実店舗';
-    const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
+    const copyTarget = extractJpKeyword(item);
 
-    modalEmoji.textContent = item.emoji || '🏪';
+    modalEmoji.textContent = item.emoji || '🛵';
     modalDishName.textContent = item.name;
     modalTags.innerHTML = `
       <span class="badge badge-cuisine">${item.cuisine}</span>
-      ${item.rating ? formatRatingBadge(item) : ''}
-      <span class="badge badge-flavor">${item.isRealShop ? srcBadge : '定番チェーン・宅配'}</span>
+      <span class="badge badge-mode">🛵 外食・宅配</span>
+      <span class="badge badge-flavor">${item.tag || '定番人気'}</span>
     `;
 
-    const combosHTML = (item.combos || ['定番人気ランチセット', 'おすすめ1人前メニュー'])
-      .map(c => `<span class="combo-suggest-chip">🍽️ ${c}</span>`)
-      .join('');
-
-    const shopPhotoHTML = item.photoUrl
-      ? `<img src="${item.photoUrl}" alt="${item.name}" class="shop-hero-photo" loading="lazy" onerror="this.style.display='none'" />`
-      : '';
-
-    const ratingPill = item.rating
-      ? `<span class="meta-pill" style="border-color:rgba(250,204,21,0.55);color:#fef08a;">⭐ ${item.rating}${item.ratingCount ? `（口コミ${item.ratingCount}件）` : ''}</span>`
-      : '';
-
-    const heroHTML = item.isRealShop
-      ? `
-        <div class="recipe-hero-banner">
-          ${shopPhotoHTML}
-          <div class="recipe-meta-pills">
-            ${ratingPill}
-            <span class="meta-pill">📍 現在地から ${formatDistance(item.distance)}</span>
-            <span class="meta-pill">🛵 目安 ${item.estDeliveryMin}分</span>
-            ${item.budgetText ? `<span class="meta-pill">💰 ${item.budgetText}</span>` : ''}
-          </div>
-          <div class="recipe-intro-text">
-            📍 住所：<strong>${item.address || `${state.location.label} ${radiusKm}km圏内`}</strong>
-            ${item.openTime ? `<br/>🕒 営業時間：${item.openTime}` : ''}
-          </div>
-          <div>
-            <div class="recipe-block-header" style="margin-bottom:6px;">
-              <span class="recipe-block-title">🍱 おすすめ注文イメージ</span>
-            </div>
-            <div class="combo-suggest-chips">${combosHTML}</div>
-          </div>
+    const heroHTML = `
+      <div class="recipe-hero-banner">
+        <div class="recipe-meta-pills">
+          <span class="meta-pill">🔍 検索キーワード：<strong>${copyTarget}</strong></span>
+          <span class="meta-pill">📍 現在地はお使いのマップ・宅配アプリ側で自動取得</span>
         </div>
-      `
-      : `
-        <div class="recipe-hero-banner">
-          <div class="recipe-meta-pills">
-            <span class="meta-pill">📍 ${state.location.label} · 定番チェーン＆デリバリー候補</span>
-            <span class="meta-pill">💡 右上の ⚙️ で Google / ホットペッパー設定すると実店舗＆星評価を表示</span>
-          </div>
+        <div class="recipe-intro-text">
+          下のボタンをタップすると「<strong>${copyTarget}</strong>」を自動入力して Googleマップ / Uber Eats / 出前館 を開きます（同時にクリップボードへもコピーされます）。
         </div>
-      `;
+      </div>
+    `;
 
-    const shopRowsHTML = peerShops
-      .slice(0, 40)
-      .map(
-        (shop, idx) => `
-        <div class="nearby-shop-row ${shop.name === item.name ? 'selected-shop' : ''}" data-shop-idx="${idx}">
-          <div class="nearby-shop-top">
-            <span class="nearby-shop-name">${shop.emoji} ${shop.name}</span>
-            <span class="nearby-shop-meta-right">
-              ${shop.rating ? `<span class="nearby-shop-star">⭐ ${shop.rating}</span>` : ''}
-              <span class="nearby-shop-dist">${formatDistance(shop.distance)}</span>
-            </span>
-          </div>
-          <div class="nearby-shop-bottom">
-            <span class="nearby-shop-addr">📍 ${shop.address || '周辺エリア'}</span>
-            <span class="nearby-shop-tag">${shop.cuisine}</span>
-          </div>
-        </div>
-      `
-      )
-      .join('');
-
-    const directoryHTML =
-      peerShops.length > 0
-        ? `
-        <div>
-          <div class="recipe-block-header">
-            <span class="recipe-block-title">🏪 周辺 ${radiusKm}km圏内「${cuisineLabel}」のお店（${peerShops.length}軒）</span>
-            <span class="recipe-block-sub">タップで切り替え</span>
-          </div>
-          <div class="shop-list-grid">${shopRowsHTML}</div>
-        </div>
-      `
-        : '';
-
-    const recruitCreditHTML =
-      item.source === 'hotpepper' || state.nearbySource === 'hotpepper'
-        ? `<div class="recruit-credit">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener noreferrer">ホットペッパーグルメ Webサービス</a></div>`
-        : '';
-
-    const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : copyTarget)}`;
+    const gmapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(copyTarget)}`;
     const uberUrl = `https://www.ubereats.com/jp/search?q=${encodeURIComponent(copyTarget)}`;
     const demaeUrl = `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(copyTarget)}`;
     const jumpBarHTML = `
       <div>
         <div class="recipe-block-header" style="margin-bottom:8px;">
-          <span class="recipe-block-title">🚀 マップ・デリバリーで直接検索</span>
+          <span class="recipe-block-title">🚀 キーワード入力済みでそのまま検索</span>
+          <span class="recipe-block-sub">手入力なしで周辺のお店をチェック</span>
         </div>
         <div class="shop-jump-bar">
-          <a href="${gmapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action">🗺️ Googleマップ</a>
-          <a href="${uberUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action">🛵 Uber Eats</a>
-          <a href="${demaeUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn eleme-action">🍱 出前館</a>
-          <button type="button" class="action-link-btn" id="btnJpCopyInline">📋 店名コピー</button>
+          <a href="${gmapUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn map-action" id="btnJpModalMap">🗺️ Googleマップ</a>
+          <a href="${uberUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn meituan-action" id="btnJpModalUber">🛵 Uber Eats</a>
+          <a href="${demaeUrl}" target="_blank" rel="noopener noreferrer" class="action-link-btn eleme-action" id="btnJpModalDemae">🍱 出前館</a>
+          <button type="button" class="action-link-btn" id="btnJpCopyInline">📋 コピー</button>
         </div>
       </div>
     `;
 
     modalBody.scrollTop = 0;
-    modalBody.innerHTML = heroHTML + jumpBarHTML + directoryHTML + recruitCreditHTML;
+    modalBody.innerHTML = heroHTML + jumpBarHTML;
+    ['btnJpModalMap', 'btnJpModalUber', 'btnJpModalDemae'].forEach(id => {
+      document.getElementById(id)?.addEventListener('click', () => {
+        playSelectSound();
+        recordTasteSignal('copy', { item });
+        navigator.clipboard?.writeText(copyTarget).catch(() => {});
+      });
+    });
     document.getElementById('btnJpCopyInline')?.addEventListener('click', () => {
       playSelectSound();
       navigator.clipboard?.writeText(copyTarget).then(() => showToast(`✅ 「${copyTarget}」をコピーしました`)).catch(() => {});
     });
 
-    modalBody.querySelectorAll('.nearby-shop-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const shop = peerShops[Number(row.dataset.shopIdx)];
-        if (!shop) return;
-        state.currentDish = shop;
-        slotReel.style.transition = 'none';
-        slotReel.style.transform = 'translate3d(0, 0, 0)';
-        slotReel.innerHTML = createReelCardHTML(shop);
-        renderResultDock(shop);
-        addToHistory(shop);
-        openShopModal(shop);
-      });
-    });
-
     modalFooter.style.gridTemplateColumns = '1fr 1fr';
     modalFooter.innerHTML = `
-      <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 店名をコピー（Uber/マップ用）</button>
+      <button type="button" class="action-link-btn primary-action" id="btnModalCopyShop">📋 検索ワードをコピー</button>
       <button type="button" class="action-link-btn" id="btnModalDoneShop">✅ 閉じる</button>
     `;
     document.getElementById('btnModalCopyShop')?.addEventListener('click', () => {
@@ -2142,7 +1473,7 @@
       navigator.clipboard
         .writeText(copyTarget)
         .then(() => showToast(`✅ 「${copyTarget}」をコピーしました`))
-        .catch(() => showToast(`✅ 店名：${copyTarget}`));
+        .catch(() => showToast(`✅ 検索語：${copyTarget}`));
     });
     document.getElementById('btnModalDoneShop')?.addEventListener('click', closeRecipeModal);
 
@@ -2153,21 +1484,6 @@
   function closeRecipeModal() {
     recipeModal.classList.remove('open');
     recipeModal.setAttribute('aria-hidden', 'true');
-  }
-
-  function openSourceModal() {
-    playSelectSound();
-    if (googleKeyInput) googleKeyInput.value = state.googleKey;
-    if (hotpepperKeyInput) hotpepperKeyInput.value = state.hotpepperKey;
-    const enabled = [state.googleKey && 'Google星評価', state.hotpepperKey && 'ホットペッパー'].filter(Boolean);
-    sourceStatusBadge.textContent = enabled.length > 0 ? `有効：${enabled.join(' + ')}` : '現在：キー不要モード（設定で星評価解放）';
-    sourceModal.classList.add('open');
-    sourceModal.setAttribute('aria-hidden', 'false');
-  }
-
-  function closeSourceModal() {
-    sourceModal.classList.remove('open');
-    sourceModal.setAttribute('aria-hidden', 'true');
   }
 
   // =========================================================================
@@ -2434,10 +1750,6 @@
       `;
       syncUI();
       renderHistoryList();
-
-      if (state.mode === 'takeout' && !state.location.ready) {
-        requestBrowserLocation();
-      }
     }
   });
 
@@ -2452,61 +1764,8 @@
     }
   });
 
-  radiusSelect.addEventListener('change', () => {
-    playSelectSound();
-    state.radius = parseInt(radiusSelect.value, 10) || 3000;
-    if (state.location.ready) scanNearbyShops(true);
-    else requestBrowserLocation();
-  });
-
   btnDraw.addEventListener('click', () => {
-    if (state.mode === 'takeout' && !state.location.ready && !state.location.denied && !state.location.locating) {
-      playSelectSound();
-      requestBrowserLocation(() => {
-        if (!state.isSpinning) spinSlotMachine();
-      });
-      return;
-    }
     spinSlotMachine();
-  });
-
-  btnRelocate.addEventListener('click', () => {
-    playSelectSound();
-    requestBrowserLocation();
-  });
-
-  btnSourceConfig.addEventListener('click', openSourceModal);
-  btnCloseSourceModal.addEventListener('click', closeSourceModal);
-  sourceModal.addEventListener('click', e => {
-    if (e.target === sourceModal) closeSourceModal();
-  });
-
-  btnSaveSource.addEventListener('click', () => {
-    const gKey = (googleKeyInput?.value || '').trim();
-    const hKey = (hotpepperKeyInput?.value || '').trim();
-    state.googleKey = gKey;
-    state.hotpepperKey = hKey;
-    if (gKey) localStorage.setItem('jp_food_google_key', gKey);
-    else localStorage.removeItem('jp_food_google_key');
-    if (hKey) localStorage.setItem('jp_food_hotpepper_key', hKey);
-    else localStorage.removeItem('jp_food_hotpepper_key');
-    closeSourceModal();
-    const enabled = [gKey && 'Google星評価', hKey && 'ホットペッパー'].filter(Boolean);
-    showToast(enabled.length > 0 ? `✅ 保存しました：${enabled.join(' + ')}` : '✅ キー不要モードに切り替えました');
-    if (state.location.ready) scanNearbyShops(true);
-    else if (state.mode === 'takeout') requestBrowserLocation();
-  });
-
-  btnResetSource.addEventListener('click', () => {
-    state.googleKey = '';
-    state.hotpepperKey = '';
-    if (googleKeyInput) googleKeyInput.value = '';
-    if (hotpepperKeyInput) hotpepperKeyInput.value = '';
-    localStorage.removeItem('jp_food_google_key');
-    localStorage.removeItem('jp_food_hotpepper_key');
-    closeSourceModal();
-    showToast('🔄 APIキーを消去し標準モードに戻しました');
-    if (state.location.ready) scanNearbyShops(true);
   });
 
   document.querySelectorAll('.btn-open-taste').forEach(btn => btn.addEventListener('click', openTasteModal));
@@ -2570,13 +1829,9 @@
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (recipeModal.classList.contains('open')) closeRecipeModal();
-      if (sourceModal.classList.contains('open')) closeSourceModal();
       if (tasteModal?.classList.contains('open')) closeTasteModal();
     }
   });
 
   syncUI();
-  setTimeout(() => {
-    if (!state.location.ready) requestBrowserLocation(null, true);
-  }, 300);
 })();
