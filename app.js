@@ -1242,11 +1242,11 @@
     return shops;
   }
 
-  function matchStaticCitySnapshot(lat, lng, radius, cityLabel, allowCityWide = false) {
+  function matchStaticCitySnapshot(lat, lng, radius, cityLabel) {
     const citySnapshots = window.CITY_SHOPS_DATA || {};
     let matchedKey = Object.keys(citySnapshots).find(k => cityLabel && (cityLabel.includes(k) || cityLabel.includes(k.replace('市', ''))));
 
-    // 国内逆地理接口若超时导致 cityLabel 为纯经纬度，仍按真实 GPS 坐标距离直接匹配周边实店快照！
+    // 国内逆地理接口若超时导致 cityLabel 为纯经纬度，仍按真实 GPS 坐标距离直接匹配
     if (!matchedKey) {
       let bestDist = Infinity;
       for (const [cityName, list] of Object.entries(citySnapshots)) {
@@ -1267,21 +1267,14 @@
       state.location.label = matchedKey;
     }
 
-    const withDist = citySnapshots[matchedKey]
+    // 严格遵守用户选择的配送半径（绝不把 17km 外的店铺混进 3km 内推荐！）
+    return citySnapshots[matchedKey]
       .map(s => ({
         ...s,
         distance: haversineMeters(lat, lng, s.lat, s.lng)
       }))
+      .filter(s => s.distance <= radius)
       .sort((a, b) => a.distance - b.distance);
-
-    const inRadius = withDist.filter(s => s.distance <= radius);
-    if (inRadius.length > 0) return inRadius;
-
-    // 郊区/同城兜底：如果在同城 25km 内但超出了 3km 核心区且海外 OSM 超时，返回同城最近的 25 家实店
-    if (allowCityWide) {
-      return withDist.filter(s => s.distance <= 25000).slice(0, 25);
-    }
-    return [];
   }
 
   async function scanNearbyShops(force = false) {
@@ -1359,6 +1352,9 @@
         }
       }
 
+      // 无论来自哪个数据源，统一严格过滤超出用户选定半径的店铺
+      rawShops = rawShops.filter(s => s.distance == null || s.distance <= state.radius);
+
       if (rawShops.length > 0) {
         state.nearbyShops = rawShops.map(classifyNearbyShop);
         state.nearbySource = source;
@@ -1370,20 +1366,20 @@
           amap: '高德评分实店',
           osm: 'OSM周边实店'
         };
-        locText.textContent = `${state.location.label} · 发现 ${state.nearbyShops.length} 家${srcNameMap[source] || '周边实店'}`;
+        locText.textContent = `${state.location.label} · ${state.radius / 1000}km内发现 ${state.nearbyShops.length} 家${srcNameMap[source] || '周边实店'}`;
       } else {
         throw new Error('当前范围暂无扫描到实店');
       }
     } catch (_) {
-      const fallbackSnap = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '', true);
+      const fallbackSnap = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
       locDot.classList.remove('loading');
       if (fallbackSnap.length > 0) {
         state.nearbyShops = fallbackSnap.map(classifyNearbyShop);
         state.nearbySource = 'osm';
         state.nearbyScannedKey = scanKey;
-        locText.textContent = `${state.location.label} · 发现 ${state.nearbyShops.length} 家同城实店`;
+        locText.textContent = `${state.location.label} · ${state.radius / 1000}km内发现 ${state.nearbyShops.length} 家周边实店`;
       } else {
-        locText.textContent = `${state.location.label} · 已启用外卖套餐库（点 ⚙️ 配高德Key搜周边精准实店）`;
+        locText.textContent = `${state.location.label} · ${state.radius / 1000}km内无免Key实店，已切外卖品类推荐（点 ⚙️ 配Key搜实店）`;
         state.nearbyShops = [];
       }
     } finally {
@@ -1453,20 +1449,23 @@
     }
 
     if (state.mode === 'takeout' && state.nearbyShops.length > 0) {
-      if (state.cuisine === 'AI精选') {
-        const aiShops = state.nearbyShops.filter(s => s.meals.includes(state.meal) && (aiTopShopRegex.test(s.name) || (s.rating && parseFloat(s.rating) >= 4.2)));
-        if (aiShops.length > 0) return aiShops;
-        return state.nearbyShops.slice(0, 20);
-      }
+      const withinRadius = state.nearbyShops.filter(s => s.distance == null || s.distance <= state.radius);
+      if (withinRadius.length > 0) {
+        if (state.cuisine === 'AI精选') {
+          const aiShops = withinRadius.filter(s => s.meals.includes(state.meal) && (aiTopShopRegex.test(s.name) || (s.rating && parseFloat(s.rating) >= 4.2)));
+          if (aiShops.length > 0) return aiShops;
+          return withinRadius.slice(0, 20);
+        }
 
-      const realMatches = state.nearbyShops.filter(s => {
-        const mealMatch = s.meals.includes(state.meal);
-        const cuisineMatch = state.cuisine === 'all' || s.cuisine === state.cuisine;
-        return mealMatch && cuisineMatch;
-      });
-      if (realMatches.length > 0) return realMatches;
-      const relaxedReal = state.nearbyShops.filter(s => state.cuisine === 'all' || s.cuisine === state.cuisine);
-      if (relaxedReal.length > 0) return relaxedReal;
+        const realMatches = withinRadius.filter(s => {
+          const mealMatch = s.meals.includes(state.meal);
+          const cuisineMatch = state.cuisine === 'all' || s.cuisine === state.cuisine;
+          return mealMatch && cuisineMatch;
+        });
+        if (realMatches.length > 0) return realMatches;
+        const relaxedReal = withinRadius.filter(s => state.cuisine === 'all' || s.cuisine === state.cuisine);
+        if (relaxedReal.length > 0) return relaxedReal;
+      }
     }
 
     // 自己做 / 懒人专区 / 无实店外卖兜底

@@ -1005,6 +1005,8 @@
         source = 'osm';
       }
 
+      rawShops = rawShops.filter(s => s.distance == null || s.distance <= state.radius);
+
       if (rawShops.length > 0) {
         state.nearbyShops = rawShops.map(classifyNearbyShop);
         state.nearbySource = source;
