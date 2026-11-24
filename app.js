@@ -72,27 +72,64 @@
     return hasOvernight ? `${label}（需提前泡发/腌制）` : label;
   }
 
-  // 合并 AI精选菜谱库 + 开源菜谱/外卖套餐库，并基于真实步骤耗时准确归类“懒人专区”
-  const lazyPattern = /(电饭煲|空气炸锅|微波炉|懒人|快手|泡面|方便面|拌面|汤面|蛋炒饭|炒饭|盖饭|丼|饭团|三明治|吐司|贝果|燕麦|蒸蛋|鸡蛋羹|荷包蛋|太阳蛋|煎蛋|炒蛋|手抓饼|煎饼|速冻|水饺|馄饨|抄手|凉拌|焖饭|一锅|葱油拌面|番茄炒蛋|西红柿炒鸡蛋|煮面|酸辣粉|螺蛳粉)/;
+  // 严格的「⚡ 懒人专区」三维度筛选标准：食材简单易获得（≤7项且无冷门难处理料）+ 做法简单（≤4步且无揉面/油炸/复杂工序）+ 时间短（≤18分钟）
+  const hardIngredientRe = /(鲍鱼|海参|花胶|燕窝|人参|鹿茸|党参|当归|沙参|玉竹|茯苓|芡实|石斛|罗氏虾|龙虾|螃蟹|大闸蟹|田螺|牛蛙|甲鱼|鹅肝|松露|鱼子酱|羊排|牛尾|牛腱|牛腩|猪蹄|猪肚|肥肠|腰花|猪肝|猪心|整鸡|整鸭|鳝鱼|泥鳅|黄鳝|兔肉|鸽子|排骨|蹄髈|肘子|老鸭|柴鸡)/;
+  const hardTechniqueRe = /(揉面|醒面|发面|发酵|擀皮|擀面|和面|扯面|宽油|复炸|油炸|小酥肉|起酥|炒糖色|熬糖|去骨|剔骨|片鱼|剁馅|打发|裱花|过筛|熬高汤|卤制|烟熏|腌制.*小时|泡发|醒发|水浴|蒸卤面|蒸面条)/;
+  const quickLazyNameRe = /(微波炉|空气炸锅|懒人|快手|泡面|方便面|拌面|蛋炒饭|炒饭|盖饭|丼|饭团|三明治|吐司|贝果|燕麦|蒸蛋|鸡蛋羹|荷包蛋|太阳蛋|煎蛋|炒蛋|手抓饼|煎饼|速冻|水饺|馄饨|抄手|凉拌|葱油拌面|番茄炒蛋|西红柿炒鸡蛋|煮面|酸辣粉|螺蛳粉)/;
+
   function detectLazyTool(d, actualMin) {
-    if (d.lazyTool) return d.lazyTool;
-    if (d.name.includes('电饭煲') || d.name.includes('焖饭') || d.name.includes('煲仔饭')) return '🍚 电饭煲免看火';
-    if (d.name.includes('空气炸锅') || d.name.includes('烤')) return '🍟 空气炸锅免看火';
-    if (d.name.includes('微波炉')) return '📻 微波炉快手';
-    if (/(凉拌|沙拉|三明治|吐司|燕麦|饭团)/.test(d.name)) return '🥗 免开火快手';
-    return actualMin > 0 && actualMin <= 15 ? '⚡ 15分钟内快手' : '⚡ 少步一锅出';
+    if (d.lazyTool && actualMin > 0 && actualMin <= 18) return d.lazyTool;
+    if (d.name.includes('微波炉')) return '📻 微波炉5分钟';
+    if (d.name.includes('空气炸锅')) return '🍟 空气炸锅免看火';
+    if (d.name.includes('电饭煲') || d.name.includes('焖饭')) return '🍚 电饭煲一键出';
+    if (/(凉拌|沙拉|三明治|吐司|燕麦|饭团|拍黄瓜|皮蛋)/.test(d.name)) return '🥗 免开火快手';
+    return actualMin > 0 && actualMin <= 12 ? '⚡ 10分钟快手' : '⚡ 15分钟快手';
+  }
+
+  function isTrueLazyDish(d, totalMin, hasOvernight) {
+    if (hasOvernight) return false;
+    const ings = (d.ingredients || []).filter(x => x && !/^#/.test(String(x).trim()));
+    const steps = d.steps || [];
+    const combinedText = `${d.name} ${ings.join(' ')} ${steps.join(' ')}`;
+
+    // 1. 食材必须简单易得：≤ 7 项，且不含冷门/难处理大硬菜
+    if (ings.length === 0 || ings.length > 7) return false;
+    if (hardIngredientRe.test(combinedText)) return false;
+
+    // 2. 做法必须简单：≤ 4 步，且无油炸/揉面/复杂工序
+    if (steps.length === 0 || steps.length > 4) return false;
+    if (hardTechniqueRe.test(combinedText)) return false;
+
+    // 3. 时间必须短：真实耗时 ≤ 18 分钟（微波炉/空气炸锅免看火放宽至 22 分钟）
+    const isAppliance = /(微波炉|空气炸锅)/.test(d.name);
+    const maxMin = isAppliance ? 22 : 18;
+    if (totalMin > maxMin) return false;
+
+    // 满足快手菜名，或超精简（≤6食材 且 ≤4步 且 ≤15分钟）
+    return quickLazyNameRe.test(d.name) || (ings.length <= 6 && steps.length <= 4 && (totalMin === 0 || totalMin <= 15));
   }
 
   const aiNames = new Set(aiCuratedDishes.map(d => d.name));
+  const processedAi = aiCuratedDishes.map(d => {
+    const { totalMin, stepSumMin, hasOvernight } = computeActualDishMinutes(d);
+    const modes = (d.modes || []).filter(m => m !== 'lazy');
+    const keepLazy = d.modes?.includes('lazy') && !hasOvernight && (d.ingredients || []).length <= 8 && (totalMin === 0 || totalMin <= 20);
+    if (keepLazy) modes.push('lazy');
+    return {
+      ...d,
+      modes,
+      lazyTool: keepLazy ? (d.lazyTool || detectLazyTool(d, totalMin)) : '',
+      time: stepSumMin >= 5 && !d.time ? formatEstimatedTime(totalMin, d.time, hasOvernight) : d.time
+    };
+  });
+
   const mergedBase = (window.DISHES_DATA || [])
     .filter(d => !aiNames.has(d.name))
     .map(d => {
       if (d.modes && d.modes.includes('cook')) {
         const { totalMin, stepSumMin, hasOvernight } = computeActualDishMinutes(d);
-        const accurateTime = stepSumMin >= 5 ? formatEstimatedTime(totalMin, d.time, hasOvernight) : (d.time || '约 15~20 分钟');
-        const isApplianceLazy = /(电饭煲|空气炸锅|微波炉)/.test(d.name);
-        const isQuickEnough = totalMin === 0 ? (d.steps && d.steps.length <= 4) : totalMin <= 22;
-        const isLazy = (isApplianceLazy || (lazyPattern.test(d.name) && (totalMin === 0 || totalMin <= 25)) || (d.steps && d.steps.length <= 4 && isQuickEnough)) && !hasOvernight;
+        const accurateTime = stepSumMin >= 5 ? formatEstimatedTime(totalMin, d.time, hasOvernight) : (d.time || '约 15 分钟');
+        const isLazy = isTrueLazyDish(d, totalMin, hasOvernight);
 
         const updated = { ...d, time: accurateTime };
         if (isLazy) {
@@ -104,7 +141,7 @@
       return d;
     });
 
-  const staticDishes = [...aiCuratedDishes, ...mergedBase];
+  const staticDishes = [...processedAi, ...mergedBase];
   const CARD_HEIGHT = 196;
 
   // 当前三步状态 + 周边实店扫描状态

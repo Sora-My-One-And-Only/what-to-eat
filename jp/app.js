@@ -26,7 +26,20 @@
   for (const d of rawCombined) {
     if (!d || !d.name || seenNames.has(d.name)) continue;
     seenNames.add(d.name);
-    staticDishes.push({ ...d, cuisine: normalizeJpCuisine(d) });
+    let modes = [...(d.modes || [])];
+    let lazyTool = d.lazyTool || '';
+    // ズボラ飯は「材料シンプル・手順3ステップ以内・15分以内（またはレンチン/炊飯器）」に厳選
+    if (modes.includes('lazy')) {
+      const m = String(d.time || '').match(/(\d+)/);
+      const mins = m ? parseInt(m[1], 10) : 15;
+      const isAppliance = /(レンジ|レンチン|炊飯器|トースター|火を使わない|混ぜるだけ)/.test(lazyTool + d.name);
+      const tooComplex = (!isAppliance && mins > 15) || (d.ingredients || []).length > 8 || /(揚げる|揚げ油|煮込み20分|保温45分)/.test(lazyTool + (d.steps || []).join(' '));
+      if (tooComplex) {
+        modes = modes.filter(x => x !== 'lazy');
+        lazyTool = '';
+      }
+    }
+    staticDishes.push({ ...d, cuisine: normalizeJpCuisine(d), modes, lazyTool });
   }
   const jpSubstitutions = window.JP_SUBSTITUTIONS || [];
   const CARD_HEIGHT = 196;
