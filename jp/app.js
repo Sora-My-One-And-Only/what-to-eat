@@ -1208,7 +1208,19 @@
     updateGuessStatusSummary();
 
     if (state.mode === 'takeout' && state.location.ready && !state.nearbyLoading && state.nearbyShops.length === 0 && !state.nearbyScannedKey) {
-      scanNearbyShops();
+      (async () => {
+        if (!state.location.city && state.location.lat && state.location.lng) {
+          try {
+            const data = await reverseGeocode(state.location.lat, state.location.lng);
+            const pref = data.principalSubdivision || '';
+            const city = data.city || data.locality || '';
+            state.location.city = pref;
+            state.location.district = city;
+            state.location.label = [pref, city].filter(Boolean).join('・') || state.location.label;
+          } catch (_) {}
+        }
+        scanNearbyShops();
+      })();
     }
 
     updateCuisineChipCounts();
@@ -1271,6 +1283,15 @@
         btnRelocate.textContent = '📍 再取得';
         btnRelocate.classList.remove('loc-auth-btn');
 
+        // 外食・宅配モード以外ではAPIクォータ節約のため座標のみ保持し、切替時に検索する
+        if (state.mode !== 'takeout' && silentOnInit) {
+          state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+          locDot.classList.remove('loading');
+          locText.textContent = '現在地取得済み · 外食モード切替時に周辺検索します';
+          syncUI();
+          return;
+        }
+
         try {
           const data = await reverseGeocode(latitude, longitude);
           const pref = data.principalSubdivision || '';
@@ -1282,7 +1303,9 @@
           state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
         }
 
-        await scanNearbyShops(true);
+        if (state.mode === 'takeout') {
+          await scanNearbyShops(true);
+        }
         if (typeof onAuthorized === 'function') onAuthorized();
       },
       err => {

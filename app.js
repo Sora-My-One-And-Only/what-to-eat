@@ -1586,7 +1586,19 @@
 
     if (state.mode === 'takeout') {
       if (state.location.ready && !state.nearbyLoading && state.nearbyShops.length === 0 && !state.nearbyScannedKey) {
-        scanNearbyShops();
+        (async () => {
+          if (!state.location.city && state.location.lat && state.location.lng) {
+            try {
+              const data = await reverseGeocode(state.location.lat, state.location.lng);
+              const city = data.city || data.principalSubdivision || '';
+              const district = data.locality || '';
+              state.location.city = city;
+              state.location.district = district;
+              state.location.label = [city, district].filter(Boolean).join('·') || state.location.label;
+            } catch (_) {}
+          }
+          scanNearbyShops();
+        })();
       }
     }
 
@@ -1728,6 +1740,15 @@
       btnRelocate.textContent = '📍 重新定位';
       btnRelocate.classList.remove('loc-auth-btn');
 
+      // 省额度策略：若当前不在「点外卖」模式（如刚打开页面在自己做），只存好坐标，暂不消耗高德逆地理和搜店配额！
+      if (state.mode !== 'takeout' && silentOnInit) {
+        state.location.label = presetLabel || `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+        locDot.classList.remove('loading');
+        locText.textContent = '已获取定位 · 切到点外卖时自动扫描周边实店';
+        syncUI();
+        return;
+      }
+
       if (presetLabel) {
         state.location.city = presetCity || '';
         state.location.district = presetDistrict || '';
@@ -1748,7 +1769,9 @@
       }
 
       if (viaTag && !silentOnInit) showToast(`📍 已通过${viaTag}识别：${state.location.label}`);
-      await scanNearbyShops(true);
+      if (state.mode === 'takeout') {
+        await scanNearbyShops(true);
+      }
       if (typeof onAuthorized === 'function') onAuthorized();
     };
 
