@@ -1223,12 +1223,12 @@
     return res.json();
   }
 
-  function requestBrowserLocation(onAuthorized) {
+  function requestBrowserLocation(onAuthorized, silentOnInit = false) {
     if (!('geolocation' in navigator)) {
       locDot.classList.remove('loading');
       locDot.classList.add('error');
       locText.textContent = 'お使いのブラウザは位置情報APIに対応していません';
-      showToast('⚠️ 位置情報APIに非対応のブラウザです');
+      if (!silentOnInit) showToast('⚠️ 位置情報APIに非対応のブラウザです');
       return;
     }
 
@@ -1269,17 +1269,17 @@
 
         if (err && err.code === 1) {
           locText.textContent = '位置情報が拒否されました · ブラウザ設定で許可してください';
-          showToast('⚠️ アドレスバー横のアイコンから位置情報を許可してください');
+          if (!silentOnInit) showToast('⚠️ アドレスバー横のアイコンから位置情報を許可してください');
         } else if (err && err.code === 3) {
           locText.textContent = '位置情報の取得がタイムアウトしました · 再試行してください';
-          showToast('⚠️ 位置取得タイムアウト');
+          if (!silentOnInit) showToast('⚠️ 位置取得タイムアウト');
         } else {
           locText.textContent = '現在地を取得できませんでした · 端末の位置設定を確認してください';
-          showToast('⚠️ 現在地を取得できませんでした');
+          if (!silentOnInit) showToast('⚠️ 現在地を取得できませんでした');
         }
         syncUI();
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      { enableHighAccuracy: false, timeout: 7000, maximumAge: 180000 }
     );
   }
 
@@ -2528,4 +2528,7 @@
   });
 
   syncUI();
+  setTimeout(() => {
+    if (!state.location.ready) requestBrowserLocation(null, true);
+  }, 300);
 })();

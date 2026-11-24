@@ -1693,7 +1693,7 @@
     throw new Error('网络 IP 定位不可用');
   }
 
-  function requestBrowserLocation(onAuthorized) {
+  function requestBrowserLocation(onAuthorized, silentOnInit = false) {
     const finishWithLocation = async (lat, lng, presetCity, presetDistrict, presetLabel, viaTag) => {
       state.location.lat = lat;
       state.location.lng = lng;
@@ -1720,7 +1720,7 @@
         }
       }
 
-      if (viaTag) showToast(`📍 已通过${viaTag}识别：${state.location.label}`);
+      if (viaTag && !silentOnInit) showToast(`📍 已通过${viaTag}识别：${state.location.label}`);
       await scanNearbyShops(true);
       if (typeof onAuthorized === 'function') onAuthorized();
     };
@@ -1735,7 +1735,7 @@
         btnRelocate.textContent = '📍 授权定位';
         btnRelocate.classList.add('loc-auth-btn');
         locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
-        showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧图标开启定位后重试');
+        if (!silentOnInit) showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧图标开启定位后重试');
         syncUI();
         return;
       }
@@ -1776,7 +1776,7 @@
       btnRelocate.textContent = '📍 授权定位';
       btnRelocate.classList.add('loc-auth-btn');
       locText.textContent = '暂无法获取当前位置 · 请检查网络或点击 ⚙️ 配置高德 Key';
-      showToast('⚠️ 定位失败，请检查网络或配置高德 Key');
+      if (!silentOnInit) showToast('⚠️ 定位失败，请检查网络或配置高德 Key');
       syncUI();
     };
 
@@ -3605,6 +3605,9 @@
     }
   });
 
-  // 初始化
+  // 初始化：打开页面自动向浏览器请求位置授权，允许后后台静默预扫周边实店
   syncUI();
+  setTimeout(() => {
+    if (!state.location.ready) requestBrowserLocation(null, true);
+  }, 300);
 })();
