@@ -1240,7 +1240,7 @@
     return shops;
   }
 
-  function matchStaticCitySnapshot(lat, lng, radius, cityLabel) {
+  function matchStaticCitySnapshot(lat, lng, radius, cityLabel, allowCityWide = false) {
     const citySnapshots = window.CITY_SHOPS_DATA || {};
     let matchedKey = Object.keys(citySnapshots).find(k => cityLabel && (cityLabel.includes(k) || cityLabel.includes(k.replace('市', ''))));
 
@@ -1260,19 +1260,26 @@
 
     if (!matchedKey || !Array.isArray(citySnapshots[matchedKey])) return [];
 
-    // 若 cityLabel 仍为纯坐标，顺带补上城市名
     if (!state.location.city && matchedKey) {
       state.location.city = matchedKey;
       state.location.label = matchedKey;
     }
 
-    return citySnapshots[matchedKey]
+    const withDist = citySnapshots[matchedKey]
       .map(s => ({
         ...s,
         distance: haversineMeters(lat, lng, s.lat, s.lng)
       }))
-      .filter(s => s.distance <= radius)
       .sort((a, b) => a.distance - b.distance);
+
+    const inRadius = withDist.filter(s => s.distance <= radius);
+    if (inRadius.length > 0) return inRadius;
+
+    // 郊区/同城兜底：如果在同城 25km 内但超出了 3km 核心区且海外 OSM 超时，返回同城最近的 25 家实店
+    if (allowCityWide) {
+      return withDist.filter(s => s.distance <= 25000).slice(0, 25);
+    }
+    return [];
   }
 
   async function scanNearbyShops(force = false) {
@@ -1366,15 +1373,15 @@
         throw new Error('当前范围暂无扫描到实店');
       }
     } catch (_) {
-      const fallbackSnap = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
+      const fallbackSnap = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '', true);
       locDot.classList.remove('loading');
       if (fallbackSnap.length > 0) {
         state.nearbyShops = fallbackSnap.map(classifyNearbyShop);
         state.nearbySource = 'osm';
         state.nearbyScannedKey = scanKey;
-        locText.textContent = `${state.location.label} · 发现 ${state.nearbyShops.length} 家周边实店`;
+        locText.textContent = `${state.location.label} · 发现 ${state.nearbyShops.length} 家同城实店`;
       } else {
-        locText.textContent = `${state.location.label} · 已启用外卖套餐库（点 ⚙️ 可配 Google/HotPepper 看实店星级）`;
+        locText.textContent = `${state.location.label} · 已启用外卖套餐库（点 ⚙️ 配高德Key搜周边精准实店）`;
         state.nearbyShops = [];
       }
     } finally {
@@ -2101,31 +2108,44 @@
     }, 1200);
   }
 
+  // 提纯搜索关键词：去掉多个竞品品牌空格叠加（如“三米粥铺 曼玲粥”只取“三米粥铺”）与加号套餐名，避免地图/外卖搜出0结果
+  function extractPrimaryKeyword(item) {
+    if (item.isRealShop) return item.name.trim();
+    const rawKw = String(item.searchKeyword || item.name || '').trim();
+    const firstToken = rawKw.split(/[\s+/、，,]+/).filter(Boolean)[0] || rawKw;
+    return firstToken.replace(/(套餐|双拼|单人餐)$/, '').trim() || rawKw;
+  }
+
   function buildTakeoutLinks(item) {
-    const keyword = item.isRealShop ? item.name : (item.searchKeyword || item.name);
+    const primaryKw = extractPrimaryKeyword(item);
     const inJapan = state.location.ready && isLikelyJapan(state.location.lat, state.location.lng, state.location.label);
 
     if (inJapan) {
-      const q = encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : keyword);
+      const q = encodeURIComponent(item.isRealShop && item.address ? `${item.name} ${item.address}` : primaryKw);
       return {
         isChina: false,
+        cleanKeyword: primaryKw,
         mapLabel: '🗺️ Google地图',
         mapUrl: `https://www.google.com/maps/search/?api=1&query=${q}`,
-        mapScheme: '', // Google Maps & Uber Eats 支持系统级 Universal Link 直达 App
+        mapScheme: '',
         primaryDeliveryLabel: '🛵 Uber Eats',
-        primaryDeliveryUrl: `https://www.ubereats.com/jp/search?q=${encodeURIComponent(keyword)}`,
+        primaryDeliveryUrl: `https://www.ubereats.com/jp/search?q=${encodeURIComponent(primaryKw)}`,
         primaryDeliveryScheme: '',
         secondaryDeliveryLabel: '🍱 出前館',
-        secondaryDeliveryUrl: `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(keyword)}`,
+        secondaryDeliveryUrl: `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(primaryKw)}`,
         secondaryDeliveryScheme: ''
       };
     }
 
-    // 中国大陆：手机端支持原生 URL Scheme 直达高德 / 美团 / 饿了么 App，电脑端与未装App自动回退网页版
-    let mapUrl = `https://ditu.amap.com/search?query=${encodeURIComponent(keyword)}`;
+    // 中国大陆：拼接当前定位城市前缀，确保高德/百度地图精准搜当前城市周边，绝不再跳已失效的 i.meituan / h5.ele.me 死链！
+    const cityPrefix = state.location.city && !/^\d/.test(state.location.city) ? `${state.location.city} ` : '';
+    const mapQuery = encodeURIComponent(`${cityPrefix}${primaryKw}`);
+    const baiduMapUrl = `https://map.baidu.com/search/${mapQuery}/`;
+
+    let mapUrl = `https://ditu.amap.com/search?query=${mapQuery}`;
     let mapScheme = isIOSDevice()
-      ? `iosamap://poi?sourceApplication=whattoeat&name=${encodeURIComponent(keyword)}`
-      : `androidamap://poi?sourceApplication=whattoeat&keywords=${encodeURIComponent(keyword)}&dev=0`;
+      ? `iosamap://poi?sourceApplication=whattoeat&name=${encodeURIComponent(primaryKw)}`
+      : `androidamap://poi?sourceApplication=whattoeat&keywords=${encodeURIComponent(primaryKw)}&dev=0`;
 
     if (item.isRealShop && item.lat && item.lng) {
       const pos = item.source === 'amap' ? { lat: item.lat, lng: item.lng } : wgs84ToGcj02(item.lat, item.lng);
@@ -2135,17 +2155,20 @@
         : `androidamap://viewMap?sourceApplication=whattoeat&poiname=${encodeURIComponent(item.name)}&lat=${pos.lat.toFixed(6)}&lon=${pos.lng.toFixed(6)}&dev=0`;
     }
 
+    const mobile = isMobileDevice();
     return {
       isChina: true,
+      cleanKeyword: primaryKw,
       mapLabel: '🗺️ 高德地图',
       mapUrl,
       mapScheme,
-      primaryDeliveryLabel: '🛵 美团外卖',
-      primaryDeliveryUrl: `https://i.meituan.com/s/?w=${encodeURIComponent(keyword)}`,
-      primaryDeliveryScheme: `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`,
-      secondaryDeliveryLabel: '🔵 饿了么搜',
-      secondaryDeliveryUrl: `https://h5.ele.me/search/#keyword=${encodeURIComponent(keyword)}`,
-      secondaryDeliveryScheme: `eleme://search?keyword=${encodeURIComponent(keyword)}`
+      // 手机端：点美团/饿了么直达原生 App（未装App回退百度地图周边搜店）；电脑端：美团/饿了么无PC下单页，直接走百度地图 & 百度外卖搜索（100%不白屏）
+      primaryDeliveryLabel: mobile ? '🛵 美团App' : '🗺️ 百度地图',
+      primaryDeliveryUrl: baiduMapUrl,
+      primaryDeliveryScheme: mobile ? `imeituan://www.meituan.com/search?q=${encodeURIComponent(primaryKw)}` : '',
+      secondaryDeliveryLabel: mobile ? '🔵 饿了么App' : '🔍 搜周边外卖',
+      secondaryDeliveryUrl: `https://www.baidu.com/s?wd=${encodeURIComponent(`${cityPrefix}${primaryKw} 外卖`)}`,
+      secondaryDeliveryScheme: mobile ? `eleme://search?keyword=${encodeURIComponent(primaryKw)}` : ''
     };
   }
 
@@ -2225,12 +2248,12 @@
       document.getElementById('btnCopyRecipeQuick')?.addEventListener('click', () => copyRecipeToClipboard(item));
       bindFeedbackEvents(item);
     } else {
-      const copyTarget = item.isRealShop ? item.name : (item.searchKeyword || item.name);
+      const links = buildTakeoutLinks(item);
+      const copyTarget = links.cleanKeyword || (item.isRealShop ? item.name : (item.searchKeyword || item.name));
       const starText = item.rating ? `⭐${item.rating} · ` : '';
       const distBadge = item.isRealShop
         ? `${starText}${formatDistance(item.distance)}`
         : state.location.label;
-      const links = buildTakeoutLinks(item);
 
       resultActionContent.innerHTML = `
         <div class="action-panel-header">
