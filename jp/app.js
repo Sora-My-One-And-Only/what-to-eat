@@ -978,11 +978,29 @@
     locDot.classList.add('loading');
     locText.textContent = `${state.location.label} ${state.radius / 1000}km圏内を検索中...`;
 
+    const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
+
     try {
       let rawShops = [];
       let source = 'osm';
 
-      if (state.googleKey) {
+      // Vercel サーバーレスAPI優先（キー設定不要でGoogle星評価・ホットペッパー取得）
+      if (hasServerApi && !state.googleKey && !state.hotpepperKey) {
+        try {
+          const res = await fetch(`/api/nearby?lat=${state.location.lat}&lng=${state.location.lng}&radius=${state.radius}&lang=ja`, {
+            signal: AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && Array.isArray(data.shops) && data.shops.length > 0) {
+              rawShops = data.shops;
+              source = data.source || 'google';
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (rawShops.length === 0 && state.googleKey) {
         try {
           rawShops = await fetchDirectGooglePlaces(state.location.lat, state.location.lng, state.radius, state.googleKey);
           source = 'google';

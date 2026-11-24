@@ -1289,15 +1289,30 @@
     locDot.classList.add('loading');
     locText.textContent = `正在扫描 ${state.location.label} ${state.radius / 1000}km 内餐饮店...`;
 
-    const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
     const inJapan = isLikelyJapan(state.location.lat, state.location.lng, state.location.label);
 
     try {
       let rawShops = [];
       let source = 'osm';
 
-      // 优先级 1：Google Maps Places JS API（全球/日本带真实星级评价）
-      if (state.googleKey) {
+      // 优先级 0：Vercel 动态服务端代理（免访客填 Key，服务端环境变量直连高德 / Google / Hot Pepper）
+      if (hasServerApi && !state.googleKey && !state.hotpepperKey && !state.amapKey) {
+        try {
+          const apiUrl = `/api/nearby?lat=${state.location.lat}&lng=${state.location.lng}&radius=${state.radius}&lang=zh-CN`;
+          const res = await fetch(apiUrl, { signal: AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && Array.isArray(data.shops) && data.shops.length > 0) {
+              rawShops = data.shops;
+              source = data.source || 'amap';
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 优先级 1：用户自填 Google Maps Places JS API（全球/日本带真实星级评价）
+      if (rawShops.length === 0 && state.googleKey) {
         try {
           rawShops = await fetchDirectGooglePlaces(state.location.lat, state.location.lng, state.radius, state.googleKey);
           source = 'google';
@@ -1326,29 +1341,15 @@
         }
       }
 
-      // 优先级 4：本地代理 / 免费国内快照 / 免费 Overpass 公网超时保护扫描
+      // 优先级 4：免 Key 国内快照 / 免费 Overpass 公网超时保护扫描
       if (rawShops.length === 0) {
-        if (isLocalhost) {
-          try {
-            const apiUrl = `/api/nearby?lat=${state.location.lat}&lng=${state.location.lng}&radius=${state.radius}`;
-            const res = await fetch(apiUrl, { signal: AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined });
-            const data = await res.json();
-            if (data.ok && Array.isArray(data.shops)) {
-              rawShops = data.shops;
-              source = data.source || 'osm';
-            }
-          } catch (_) {}
-        }
-
-        if (rawShops.length === 0) {
-          const snapshot = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
-          if (snapshot.length > 0) {
-            rawShops = snapshot;
-            source = 'osm';
-          } else {
-            rawShops = await fetchDirectOverpass(state.location.lat, state.location.lng, state.radius);
-            source = 'osm';
-          }
+        const snapshot = matchStaticCitySnapshot(state.location.lat, state.location.lng, state.radius, state.location.label || state.location.city || '');
+        if (snapshot.length > 0) {
+          rawShops = snapshot;
+          source = 'osm';
+        } else {
+          rawShops = await fetchDirectOverpass(state.location.lat, state.location.lng, state.radius);
+          source = 'osm';
         }
       }
 
@@ -1618,6 +1619,19 @@
   // 5. 纯浏览器授权地理位置定位（兼容中国大陆 Chrome/Edge/移动端，高德逆地理 + 自动降级重试）
   // =========================================================================
   async function reverseGeocode(lat, lng) {
+    const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
+
+    // 0. Vercel 服务端高德逆地理（访客免填 Key，国内秒回）
+    if (hasServerApi && !state.amapKey && isInMainlandChina(lat, lng)) {
+      try {
+        const res = await fetch(`/api/geo?lat=${lat}&lng=${lng}`, {
+          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+        });
+        const data = await res.json();
+        if (data.ok && (data.city || data.principalSubdivision)) return data;
+      } catch (_) {}
+    }
+
     // 1. 中国大陆且已配置高德 Key：优先走高德逆地理（直连秒回、无外网阻断、已含 WGS-84→GCJ-02 纠偏）
     if (state.amapKey && isInMainlandChina(lat, lng)) {
       try {
@@ -1761,7 +1775,20 @@
         return;
       }
 
-      // 不依赖 Chrome/Google 定位服务：优先走高德国内 IP 定位，无高德 Key 则走免 Key 网络 IP 定位
+      // 不依赖 Chrome/Google 定位服务：优先走服务端高德 IP（Vercel）或本地高德 Key，再走免 Key 网络 IP 定位
+      const hasServerApi = window.location.protocol.startsWith('http') && !window.location.hostname.endsWith('github.io');
+      if (hasServerApi && !state.amapKey) {
+        try {
+          locText.textContent = '正在使用高德服务端国内定位...';
+          const r = await fetch('/api/geo?mode=ip', { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
+          const d = await r.json();
+          if (d.ok && d.lat && d.lng) {
+            await finishWithLocation(d.lat, d.lng, d.city, d.district, d.label, '高德国内定位');
+            return;
+          }
+        } catch (_) {}
+      }
+
       try {
         if (state.amapKey) {
           locText.textContent = '正在使用高德国内定位...';

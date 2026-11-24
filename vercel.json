@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    { "source": "/jp", "destination": "/jp/index.html" },
+    { "source": "/jp/", "destination": "/jp/index.html" }
+  ]
+}
