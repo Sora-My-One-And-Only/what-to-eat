@@ -1116,11 +1116,43 @@
     });
   }
 
-  // 引擎 C：高德地图 POI 2.0（中国大陆支持CORS，含国内商户评分）
+  function isInMainlandChina(lat, lng) {
+    return lat >= 18.0 && lat <= 53.6 && lng >= 73.5 && lng <= 135.1 && !isLikelyJapan(lat, lng, '');
+  }
+
+  // WGS-84（浏览器原生GPS坐标）转 GCJ-02（高德/腾讯火星坐标系），修正国内 300~700 米偏移
+  function wgs84ToGcj02(wgsLat, wgsLng) {
+    if (!isInMainlandChina(wgsLat, wgsLng)) return { lat: wgsLat, lng: wgsLng };
+    const PI = Math.PI;
+    const a = 6378245.0;
+    const ee = 0.00669342162296594323;
+    const x = wgsLng - 105.0;
+    const y = wgsLat - 35.0;
+    let dLat = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    dLat += ((20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0) / 3.0;
+    dLat += ((20.0 * Math.sin(y * PI) + 40.0 * Math.sin((y / 3.0) * PI)) * 2.0) / 3.0;
+    dLat += ((160.0 * Math.sin((y / 12.0) * PI) + 320 * Math.sin((y * PI) / 30.0)) * 2.0) / 3.0;
+
+    let dLng = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    dLng += ((20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0) / 3.0;
+    dLng += ((20.0 * Math.sin(x * PI) + 40.0 * Math.sin((x / 3.0) * PI)) * 2.0) / 3.0;
+    dLng += ((150.0 * Math.sin((x / 12.0) * PI) + 300.0 * Math.sin((x / 30.0) * PI)) * 2.0) / 3.0;
+
+    const radLat = (wgsLat / 180.0) * PI;
+    let magic = Math.sin(radLat);
+    magic = 1 - ee * magic * magic;
+    const sqrtMagic = Math.sqrt(magic);
+    dLat = (dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * PI);
+    dLng = (dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * PI);
+    return { lat: wgsLat + dLat, lng: wgsLng + dLng };
+  }
+
+  // 引擎 C：高德地图 POI 2.0（中国大陆支持CORS，含国内商户评分，自动 WGS-84 → GCJ-02 纠偏）
   async function fetchDirectAmap(lat, lng, radius, amapKey) {
+    const gcj = wgs84ToGcj02(lat, lng);
     const shops = [];
     for (let page = 1; page <= 3; page++) {
-      const url = `https://restapi.amap.com/v5/place/around?key=${encodeURIComponent(amapKey)}&location=${lng.toFixed(6)},${lat.toFixed(6)}&radius=${radius}&types=050000&page_size=25&page_num=${page}&show_fields=business`;
+      const url = `https://restapi.amap.com/v5/place/around?key=${encodeURIComponent(amapKey)}&location=${gcj.lng.toFixed(6)},${gcj.lat.toFixed(6)}&radius=${radius}&types=050000&page_size=25&page_num=${page}&show_fields=business`;
       const res = await fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
       const data = await res.json();
       if (data.status !== '1') {
@@ -1131,7 +1163,7 @@
       for (const p of pois) {
         if (!p.name) continue;
         const [pLng, pLat] = (p.location || '').split(',').map(Number);
-        const dist = p.distance ? Number(p.distance) : haversineMeters(lat, lng, pLat || lat, pLng || lng);
+        const dist = p.distance ? Number(p.distance) : haversineMeters(gcj.lat, gcj.lng, pLat || gcj.lat, pLng || gcj.lng);
         shops.push({
           name: p.name.trim(),
           address: p.address || p.adname || '',
@@ -1141,8 +1173,8 @@
           rating: p.business?.rating || '',
           cost: p.business?.cost || '',
           openTime: p.business?.opentime_today || '',
-          lat: pLat || lat,
-          lng: pLng || lng,
+          lat: pLat || gcj.lat,
+          lng: pLng || gcj.lng,
           source: 'amap'
         });
       }
@@ -1210,8 +1242,29 @@
 
   function matchStaticCitySnapshot(lat, lng, radius, cityLabel) {
     const citySnapshots = window.CITY_SHOPS_DATA || {};
-    const matchedKey = Object.keys(citySnapshots).find(k => cityLabel.includes(k) || cityLabel.includes(k.replace('市', '')));
+    let matchedKey = Object.keys(citySnapshots).find(k => cityLabel && (cityLabel.includes(k) || cityLabel.includes(k.replace('市', ''))));
+
+    // 国内逆地理接口若超时导致 cityLabel 为纯经纬度，仍按真实 GPS 坐标距离直接匹配周边实店快照！
+    if (!matchedKey) {
+      let bestDist = Infinity;
+      for (const [cityName, list] of Object.entries(citySnapshots)) {
+        if (!Array.isArray(list) || list.length === 0) continue;
+        const sample = list[0];
+        const d = haversineMeters(lat, lng, sample.lat, sample.lng);
+        if (d < 45000 && d < bestDist) {
+          bestDist = d;
+          matchedKey = cityName;
+        }
+      }
+    }
+
     if (!matchedKey || !Array.isArray(citySnapshots[matchedKey])) return [];
+
+    // 若 cityLabel 仍为纯坐标，顺带补上城市名
+    if (!state.location.city && matchedKey) {
+      state.location.city = matchedKey;
+      state.location.label = matchedKey;
+    }
 
     return citySnapshots[matchedKey]
       .map(s => ({
@@ -1554,11 +1607,28 @@
   }
 
   // =========================================================================
-  // 5. 纯浏览器授权地理位置定位（无任何默认城市预设，严格向浏览器请求定位授权）
+  // 5. 纯浏览器授权地理位置定位（兼容中国大陆 Chrome/Edge/移动端，高德逆地理 + 自动降级重试）
   // =========================================================================
   async function reverseGeocode(lat, lng) {
+    // 1. 中国大陆且已配置高德 Key：优先走高德逆地理（直连秒回、无外网阻断、已含 WGS-84→GCJ-02 纠偏）
+    if (state.amapKey && isInMainlandChina(lat, lng)) {
+      try {
+        const gcj = wgs84ToGcj02(lat, lng);
+        const url = `https://restapi.amap.com/v3/geocode/regeo?key=${encodeURIComponent(state.amapKey)}&location=${gcj.lng.toFixed(6)},${gcj.lat.toFixed(6)}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
+        const data = await res.json();
+        if (data.status === '1' && data.regeocode?.addressComponent) {
+          const ac = data.regeocode.addressComponent;
+          const city = (Array.isArray(ac.city) ? ac.province : ac.city) || ac.province || '';
+          const district = (Array.isArray(ac.district) ? '' : ac.district) || '';
+          return { city, locality: district, principalSubdivision: ac.province || '' };
+        }
+      } catch (_) {}
+    }
+
+    // 2. 全球免费逆地理兜底（带 5 秒超时防止国内卡死）
     const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=zh`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined });
     return res.json();
   }
 
@@ -1575,56 +1645,99 @@
     locDot.classList.add('loading');
     locText.textContent = '正在向浏览器请求位置授权...';
 
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords;
-        state.location.lat = latitude;
-        state.location.lng = longitude;
-        state.location.ready = true;
-        btnRelocate.textContent = '📍 重新定位';
-        btnRelocate.classList.remove('loc-auth-btn');
+    const onPositionSuccess = async pos => {
+      const { latitude, longitude } = pos.coords;
+      state.location.lat = latitude;
+      state.location.lng = longitude;
+      state.location.ready = true;
+      btnRelocate.textContent = '📍 重新定位';
+      btnRelocate.classList.remove('loc-auth-btn');
 
-        try {
-          const data = await reverseGeocode(latitude, longitude);
-          const city = data.city || data.principalSubdivision || '';
-          const district = data.locality || '';
-          state.location.city = city;
-          state.location.district = district;
-          state.location.label = [city, district].filter(Boolean).join('·') || `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-        } catch (_) {
-          state.location.city = '';
-          state.location.district = '';
-          state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-        }
-
-        await scanNearbyShops(true);
-        if (typeof onAuthorized === 'function') onAuthorized();
-      },
-      err => {
-        state.location.ready = false;
-        state.nearbyShops = [];
-        locDot.classList.remove('loading');
-        locDot.classList.add('error');
-        btnRelocate.textContent = '📍 授权定位';
-        btnRelocate.classList.add('loc-auth-btn');
-
-        if (err && err.code === 1) {
-          locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
-          showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧锁头图标开启定位后重试');
-        } else if (err && err.code === 3) {
-          locText.textContent = '浏览器定位超时 · 请点击「授权定位」重试';
-          showToast('⚠️ 定位超时，请重试');
-        } else {
-          locText.textContent = '暂无法获取当前位置 · 请检查设备定位服务';
-          showToast('⚠️ 无法获取当前位置，请检查系统定位开关');
-        }
-        syncUI();
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
+      try {
+        const data = await reverseGeocode(latitude, longitude);
+        const city = data.city || data.principalSubdivision || '';
+        const district = data.locality || '';
+        state.location.city = city;
+        state.location.district = district;
+        state.location.label = [city, district].filter(Boolean).join('·') || `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+      } catch (_) {
+        state.location.city = '';
+        state.location.district = '';
+        state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
       }
+
+      await scanNearbyShops(true);
+      if (typeof onAuthorized === 'function') onAuthorized();
+    };
+
+    const onPositionFinalError = async err => {
+      // 如果用户在桌面 Chrome（国内无梯子）下遇到 code 2/3（谷歌网络定位服务不可达），且配置了高德 Key，可自动走高德 IP 定位兜底
+      if (err && err.code !== 1 && state.amapKey) {
+        try {
+          locText.textContent = '系统定位不可达，正在尝试高德国内网络定位...';
+          const res = await fetch(`https://restapi.amap.com/v3/ip?key=${encodeURIComponent(state.amapKey)}`, {
+            signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+          });
+          const data = await res.json();
+          if (data.status === '1' && typeof data.rectangle === 'string' && data.rectangle.includes(';')) {
+            const [p1, p2] = data.rectangle.split(';').map(s => s.split(',').map(Number));
+            if (p1.length === 2 && p2.length === 2) {
+              const lng = (p1[0] + p2[0]) / 2;
+              const lat = (p1[1] + p2[1]) / 2;
+              state.location.lat = lat;
+              state.location.lng = lng;
+              state.location.city = data.city || data.province || '';
+              state.location.district = '';
+              state.location.label = state.location.city || '当前城市';
+              state.location.ready = true;
+              btnRelocate.textContent = '📍 重新定位';
+              btnRelocate.classList.remove('loc-auth-btn');
+              await scanNearbyShops(true);
+              if (typeof onAuthorized === 'function') onAuthorized();
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
+      state.location.ready = false;
+      state.nearbyShops = [];
+      locDot.classList.remove('loading');
+      locDot.classList.add('error');
+      btnRelocate.textContent = '📍 授权定位';
+      btnRelocate.classList.add('loc-auth-btn');
+
+      if (err && err.code === 1) {
+        locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
+        showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧图标开启定位后重试');
+      } else if (err && err.code === 2) {
+        locText.textContent = '国内桌面 Chrome 定位服务受限 · 建议用 Edge/手机浏览器或点 ⚙️ 配高德Key';
+        showToast('⚠️ 国内桌面 Chrome 无法访问 Google 定位接口，换 Edge/手机浏览器或配高德 Key 即可解决');
+      } else if (err && err.code === 3) {
+        locText.textContent = '定位超时 · 请检查系统定位开关，或换 Edge/手机浏览器重试';
+        showToast('⚠️ 定位超时，国内电脑建议用 Edge 或手机浏览器');
+      } else {
+        locText.textContent = '暂无法获取当前位置 · 请检查设备定位服务';
+        showToast('⚠️ 无法获取当前位置，请检查系统定位开关');
+      }
+      syncUI();
+    };
+
+    // 先用标准精度快速定位（国内 Wi-Fi/系统定位最快），若超时再尝试低精度宽容模式
+    navigator.geolocation.getCurrentPosition(
+      onPositionSuccess,
+      err => {
+        if (err && err.code === 1) {
+          onPositionFinalError(err);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          onPositionSuccess,
+          onPositionFinalError,
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+        );
+      },
+      { enableHighAccuracy: true, timeout: 6500, maximumAge: 60000 }
     );
   }
 
