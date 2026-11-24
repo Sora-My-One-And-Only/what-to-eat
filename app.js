@@ -167,7 +167,9 @@
       city: '',
       district: '',
       label: '当前位置',
-      ready: false
+      ready: false,
+      denied: false,
+      locating: false
     }
   };
 
@@ -1701,7 +1703,12 @@
   }
 
   function requestBrowserLocation(onAuthorized, silentOnInit = false) {
+    if (state.location.locating) return;
+    state.location.locating = true;
+
     const finishWithLocation = async (lat, lng, presetCity, presetDistrict, presetLabel, viaTag) => {
+      state.location.locating = false;
+      state.location.denied = false;
       state.location.lat = lat;
       state.location.lng = lng;
       state.location.ready = true;
@@ -1733,16 +1740,24 @@
     };
 
     const fallbackWithoutChrome = async err => {
-      // 用户主动点击「拒绝授权」(code 1) 时严格尊重用户选择
+      // 用户主动点击「拒绝授权」(code 1) 或浏览器禁止非手势弹窗
       if (err && err.code === 1) {
+        state.location.locating = false;
         state.location.ready = false;
+        state.location.denied = true;
         state.nearbyShops = [];
         locDot.classList.remove('loading');
         locDot.classList.add('error');
-        btnRelocate.textContent = '📍 授权定位';
+        btnRelocate.textContent = '📍 重试授权';
         btnRelocate.classList.add('loc-auth-btn');
-        locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
-        if (!silentOnInit) showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧图标开启定位后重试');
+        if (!window.isSecureContext) {
+          locText.textContent = '需在 HTTPS 网址下使用定位（当前非安全连接）';
+        } else {
+          locText.textContent = '未获定位权限 · 可点地址栏左侧图标开启，或直接抽外卖套餐';
+        }
+        if (!silentOnInit) {
+          showToast('⚠️ 浏览器未授予位置权限（点地址栏左侧图标可重新开启），现可直接抽取外卖套餐');
+        }
         syncUI();
         return;
       }
@@ -1758,9 +1773,8 @@
       } catch (_) {}
 
       try {
-        locText.textContent = '正在通过国内可用网络定位识别当前位置...';
+        locText.textContent = '正在通过网络定位识别当前位置...';
         const ipLoc = await fetchFreeIPLocation();
-        // 再尝试用中文逆地理美化城市名
         let cnLabel = ipLoc.label;
         let cnCity = ipLoc.city;
         try {
@@ -1776,33 +1790,33 @@
         return;
       } catch (_) {}
 
+      state.location.locating = false;
       state.location.ready = false;
       state.nearbyShops = [];
       locDot.classList.remove('loading');
       locDot.classList.add('error');
       btnRelocate.textContent = '📍 授权定位';
       btnRelocate.classList.add('loc-auth-btn');
-      locText.textContent = '暂无法获取当前位置 · 请检查网络或点击 ⚙️ 配置高德 Key';
-      if (!silentOnInit) showToast('⚠️ 定位失败，请检查网络或配置高德 Key');
+      locText.textContent = '暂无法获取当前位置 · 可直接抽外卖套餐或点 ⚙️ 配高德 Key';
+      if (!silentOnInit) showToast('⚠️ 定位失败，现可直接抽取外卖套餐');
       syncUI();
     };
 
     locDot.classList.remove('error');
     locDot.classList.add('loading');
 
-    // 若已配置高德 Key 且浏览器不支持 geolocation，直接走高德定位
-    if (!('geolocation' in navigator)) {
-      fallbackWithoutChrome({ code: 2 });
+    if (!('geolocation' in navigator) || !window.isSecureContext) {
+      fallbackWithoutChrome({ code: window.isSecureContext ? 2 : 1 });
       return;
     }
 
     locText.textContent = state.amapKey ? '正在定位（高德优先 / 浏览器授权）...' : '正在向浏览器请求位置授权...';
 
-    // 使用短超时 4.5 秒，避免国内桌面 Chrome 卡死在 Google 定位服务；失败立即无缝切到高德/网络 IP 定位
+    // 使用 10 秒超时确保手机真实 GPS 冷启动有足够时间锁定，不会过早超时
     navigator.geolocation.getCurrentPosition(
       pos => finishWithLocation(pos.coords.latitude, pos.coords.longitude),
       err => fallbackWithoutChrome(err),
-      { enableHighAccuracy: false, timeout: 4500, maximumAge: 180000 }
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 180000 }
     );
   }
 
@@ -3496,7 +3510,8 @@
   });
 
   btnDraw.addEventListener('click', () => {
-    if (state.mode === 'takeout' && !state.location.ready) {
+    // 仅在尚未尝试授权且未拒绝时请求一次定位；如果用户拒绝了定位或定位失败，绝不卡死抽卡按钮，直接用外卖套餐库开抽！
+    if (state.mode === 'takeout' && !state.location.ready && !state.location.denied && !state.location.locating) {
       playSelectSound();
       requestBrowserLocation(() => {
         if (!state.isSpinning) spinSlotMachine();
@@ -3628,9 +3643,22 @@
     }
   });
 
-  // 初始化：打开页面自动向浏览器请求位置授权，允许后后台静默预扫周边实店
+  // 初始化：检查权限状态后自动向浏览器请求位置授权（若已拒绝则不死循环，避免 iOS Safari 报错）
   syncUI();
-  setTimeout(() => {
-    if (!state.location.ready) requestBrowserLocation(null, true);
+  setTimeout(async () => {
+    if (state.location.ready || state.location.locating) return;
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const perm = await navigator.permissions.query({ name: 'geolocation' });
+        if (perm.state === 'denied') {
+          state.location.denied = true;
+          locDot.classList.add('error');
+          locText.textContent = '浏览器曾拒绝定位 · 点地址栏左侧图标可重新开启，或直接抽外卖';
+          syncUI();
+          return;
+        }
+      }
+    } catch (_) {}
+    requestBrowserLocation(null, true);
   }, 300);
 })();

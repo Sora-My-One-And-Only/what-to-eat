@@ -66,7 +66,9 @@
       city: '',
       district: '',
       label: '現在地',
-      ready: false
+      ready: false,
+      denied: false,
+      locating: false
     }
   };
 
@@ -1224,20 +1226,24 @@
   }
 
   function requestBrowserLocation(onAuthorized, silentOnInit = false) {
-    if (!('geolocation' in navigator)) {
+    if (state.location.locating) return;
+    if (!('geolocation' in navigator) || !window.isSecureContext) {
       locDot.classList.remove('loading');
       locDot.classList.add('error');
-      locText.textContent = 'お使いのブラウザは位置情報APIに対応していません';
-      if (!silentOnInit) showToast('⚠️ 位置情報APIに非対応のブラウザです');
+      locText.textContent = !window.isSecureContext ? 'HTTPS環境でのみ位置情報が利用できます' : 'お使いのブラウザは位置情報APIに非対応です';
+      if (!silentOnInit) showToast('⚠️ 位置情報を取得できませんでした（定番メニューで抽選できます）');
       return;
     }
 
+    state.location.locating = true;
     locDot.classList.remove('error');
     locDot.classList.add('loading');
     locText.textContent = 'ブラウザに位置情報の許可をリクエスト中...';
 
     navigator.geolocation.getCurrentPosition(
       async pos => {
+        state.location.locating = false;
+        state.location.denied = false;
         const { latitude, longitude } = pos.coords;
         state.location.lat = latitude;
         state.location.lng = longitude;
@@ -1260,26 +1266,25 @@
         if (typeof onAuthorized === 'function') onAuthorized();
       },
       err => {
+        state.location.locating = false;
         state.location.ready = false;
+        if (err && err.code === 1) state.location.denied = true;
         state.nearbyShops = [];
         locDot.classList.remove('loading');
         locDot.classList.add('error');
-        btnRelocate.textContent = '📍 現在地取得';
+        btnRelocate.textContent = '📍 再試行';
         btnRelocate.classList.add('loc-auth-btn');
 
         if (err && err.code === 1) {
-          locText.textContent = '位置情報が拒否されました · ブラウザ設定で許可してください';
-          if (!silentOnInit) showToast('⚠️ アドレスバー横のアイコンから位置情報を許可してください');
-        } else if (err && err.code === 3) {
-          locText.textContent = '位置情報の取得がタイムアウトしました · 再試行してください';
-          if (!silentOnInit) showToast('⚠️ 位置取得タイムアウト');
+          locText.textContent = '位置情報未許可 · そのまま定番チェーンからガチャ可能です';
+          if (!silentOnInit) showToast('⚠️ 位置情報が未許可です（定番チェーン・宅配候補で抽選できます）');
         } else {
-          locText.textContent = '現在地を取得できませんでした · 端末の位置設定を確認してください';
-          if (!silentOnInit) showToast('⚠️ 現在地を取得できませんでした');
+          locText.textContent = '現在地を取得できませんでした · 定番候補でガチャ可能です';
+          if (!silentOnInit) showToast('⚠️ 現在地取得失敗（定番候補で抽選できます）');
         }
         syncUI();
       },
-      { enableHighAccuracy: false, timeout: 7000, maximumAge: 180000 }
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 180000 }
     );
   }
 
@@ -2412,7 +2417,7 @@
   });
 
   btnDraw.addEventListener('click', () => {
-    if (state.mode === 'takeout' && !state.location.ready) {
+    if (state.mode === 'takeout' && !state.location.ready && !state.location.denied && !state.location.locating) {
       playSelectSound();
       requestBrowserLocation(() => {
         if (!state.isSpinning) spinSlotMachine();
