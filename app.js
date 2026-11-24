@@ -2066,6 +2066,41 @@
     });
   }
 
+  function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(navigator.userAgent || '');
+  }
+
+  function isIOSDevice() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  }
+
+  // 手机端优先尝试直达原生 App（URL Scheme），1.2 秒未拉起则自动回退网页搜索；电脑端直接开网页版
+  function openAppWithFallback(e, appSchemeUrl, webFallbackUrl, copyTarget, appName) {
+    playSelectSound();
+    if (copyTarget) {
+      silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」，正在打开${appName}`);
+    }
+    if (!isMobileDevice() || !appSchemeUrl) {
+      return; // 电脑端或 Universal Link 走原生 <a target="_blank">
+    }
+
+    e.preventDefault();
+    let appOpened = false;
+    const onHide = () => {
+      if (document.hidden) appOpened = true;
+    };
+    document.addEventListener('visibilitychange', onHide, { once: true });
+
+    window.location.href = appSchemeUrl;
+
+    setTimeout(() => {
+      document.removeEventListener('visibilitychange', onHide);
+      if (!appOpened && !document.hidden) {
+        window.open(webFallbackUrl, '_blank', 'noopener,noreferrer') || (window.location.href = webFallbackUrl);
+      }
+    }, 1200);
+  }
+
   function buildTakeoutLinks(item) {
     const keyword = item.isRealShop ? item.name : (item.searchKeyword || item.name);
     const inJapan = state.location.ready && isLikelyJapan(state.location.lat, state.location.lng, state.location.label);
@@ -2076,28 +2111,41 @@
         isChina: false,
         mapLabel: '🗺️ Google地图',
         mapUrl: `https://www.google.com/maps/search/?api=1&query=${q}`,
+        mapScheme: '', // Google Maps & Uber Eats 支持系统级 Universal Link 直达 App
         primaryDeliveryLabel: '🛵 Uber Eats',
         primaryDeliveryUrl: `https://www.ubereats.com/jp/search?q=${encodeURIComponent(keyword)}`,
+        primaryDeliveryScheme: '',
         secondaryDeliveryLabel: '🍱 出前館',
-        secondaryDeliveryUrl: `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(keyword)}`
+        secondaryDeliveryUrl: `https://demae-can.com/search/delivery/?keyword=${encodeURIComponent(keyword)}`,
+        secondaryDeliveryScheme: ''
       };
     }
 
-    // 中国大陆：高德地图 URI API（手机自动唤起高德App，电脑直达高德网页标点）+ 美团外卖 + 饿了么搜索
+    // 中国大陆：手机端支持原生 URL Scheme 直达高德 / 美团 / 饿了么 App，电脑端与未装App自动回退网页版
     let mapUrl = `https://ditu.amap.com/search?query=${encodeURIComponent(keyword)}`;
+    let mapScheme = isIOSDevice()
+      ? `iosamap://poi?sourceApplication=whattoeat&name=${encodeURIComponent(keyword)}`
+      : `androidamap://poi?sourceApplication=whattoeat&keywords=${encodeURIComponent(keyword)}&dev=0`;
+
     if (item.isRealShop && item.lat && item.lng) {
       const pos = item.source === 'amap' ? { lat: item.lat, lng: item.lng } : wgs84ToGcj02(item.lat, item.lng);
       mapUrl = `https://uri.amap.com/marker?position=${pos.lng.toFixed(6)},${pos.lat.toFixed(6)}&name=${encodeURIComponent(item.name)}&callnative=1`;
+      mapScheme = isIOSDevice()
+        ? `iosamap://viewMap?sourceApplication=whattoeat&poiname=${encodeURIComponent(item.name)}&lat=${pos.lat.toFixed(6)}&lon=${pos.lng.toFixed(6)}&dev=0`
+        : `androidamap://viewMap?sourceApplication=whattoeat&poiname=${encodeURIComponent(item.name)}&lat=${pos.lat.toFixed(6)}&lon=${pos.lng.toFixed(6)}&dev=0`;
     }
 
     return {
       isChina: true,
       mapLabel: '🗺️ 高德地图',
       mapUrl,
+      mapScheme,
       primaryDeliveryLabel: '🛵 美团外卖',
       primaryDeliveryUrl: `https://i.meituan.com/s/?w=${encodeURIComponent(keyword)}`,
+      primaryDeliveryScheme: `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`,
       secondaryDeliveryLabel: '🔵 饿了么搜',
-      secondaryDeliveryUrl: `https://h5.ele.me/search/#keyword=${encodeURIComponent(keyword)}`
+      secondaryDeliveryUrl: `https://h5.ele.me/search/#keyword=${encodeURIComponent(keyword)}`,
+      secondaryDeliveryScheme: `eleme://search?keyword=${encodeURIComponent(keyword)}`
     };
   }
 
@@ -2205,14 +2253,13 @@
       `;
 
       document.getElementById('btnOpenShopModal')?.addEventListener('click', () => openShopModal(item));
-      document.getElementById('btnJumpMapQuick')?.addEventListener('click', () => {
-        playSelectSound();
+      document.getElementById('btnJumpMapQuick')?.addEventListener('click', e => {
         recordTasteSignal('open_detail', { item });
+        openAppWithFallback(e, links.mapScheme, links.mapUrl, '', links.mapLabel);
       });
-      document.getElementById('btnJumpDeliveryQuick')?.addEventListener('click', () => {
-        playSelectSound();
+      document.getElementById('btnJumpDeliveryQuick')?.addEventListener('click', e => {
         recordTasteSignal('copy', { item });
-        silentCopyText(copyTarget, `✅ 已同步复制「${copyTarget}」，可直接粘贴搜索下单`);
+        openAppWithFallback(e, links.primaryDeliveryScheme, links.primaryDeliveryUrl, copyTarget, links.primaryDeliveryLabel);
       });
       bindFeedbackEvents(item);
     }
@@ -3052,15 +3099,17 @@
     modalBody.scrollTop = 0;
     modalBody.innerHTML = heroHTML + jumpBarHTML + directoryHTML + recruitCreditHTML;
 
-    document.getElementById('btnModalJumpPrimary')?.addEventListener('click', () => {
-      playSelectSound();
-      recordTasteSignal('copy', { item });
-      silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」，正在打开外卖搜索`);
+    document.getElementById('btnModalJumpMap')?.addEventListener('click', e => {
+      recordTasteSignal('open_detail', { item });
+      openAppWithFallback(e, links.mapScheme, links.mapUrl, '', links.mapLabel);
     });
-    document.getElementById('btnModalJumpSecondary')?.addEventListener('click', () => {
-      playSelectSound();
+    document.getElementById('btnModalJumpPrimary')?.addEventListener('click', e => {
       recordTasteSignal('copy', { item });
-      silentCopyText(copyTarget, `✅ 已复制「${copyTarget}」，正在打开外卖搜索`);
+      openAppWithFallback(e, links.primaryDeliveryScheme, links.primaryDeliveryUrl, copyTarget, links.primaryDeliveryLabel);
+    });
+    document.getElementById('btnModalJumpSecondary')?.addEventListener('click', e => {
+      recordTasteSignal('copy', { item });
+      openAppWithFallback(e, links.secondaryDeliveryScheme, links.secondaryDeliveryUrl, copyTarget, links.secondaryDeliveryLabel);
     });
     document.getElementById('btnModalCopyInline')?.addEventListener('click', () => {
       playSelectSound();
