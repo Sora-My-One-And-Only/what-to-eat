@@ -1632,73 +1632,142 @@
     return res.json();
   }
 
-  function requestBrowserLocation(onAuthorized) {
-    if (!('geolocation' in navigator)) {
-      locDot.classList.remove('loading');
-      locDot.classList.add('error');
-      locText.textContent = '当前浏览器不支持地理定位 API';
-      showToast('⚠️ 当前浏览器不支持地理定位');
-      return;
+  // 国内原生高德 IP 定位（不依赖 Chrome/Google 定位服务）
+  async function fetchAmapIPLocation(amapKey) {
+    const res = await fetch(`https://restapi.amap.com/v3/ip?key=${encodeURIComponent(amapKey)}`, {
+      signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined
+    });
+    const data = await res.json();
+    if (data.status === '1' && typeof data.rectangle === 'string' && data.rectangle.includes(';')) {
+      const [p1, p2] = data.rectangle.split(';').map(s => s.split(',').map(Number));
+      if (p1.length === 2 && p2.length === 2) {
+        const lng = (p1[0] + p2[0]) / 2;
+        const lat = (p1[1] + p2[1]) / 2;
+        const city = (Array.isArray(data.city) ? data.province : data.city) || data.province || '';
+        return { lat, lng, city, district: '', label: city || '当前城市', via: '高德IP定位' };
+      }
     }
+    throw new Error('高德 IP 定位无有效结果');
+  }
 
-    locDot.classList.remove('error');
-    locDot.classList.add('loading');
-    locText.textContent = '正在向浏览器请求位置授权...';
+  // 免 Key 公开网络 IP 定位兜底（绕开国内桌面 Chrome 的 Google 定位阻断）
+  async function fetchFreeIPLocation() {
+    const providers = [
+      async () => {
+        const res = await fetch('https://get.geojs.io/v1/ip/geo.json', {
+          signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined
+        });
+        const d = await res.json();
+        if (!d.latitude || !d.longitude) throw new Error('geojs empty');
+        return {
+          lat: parseFloat(d.latitude),
+          lng: parseFloat(d.longitude),
+          city: d.city || d.region || '',
+          district: '',
+          label: [d.region, d.city].filter(Boolean).join('·') || '当前位置',
+          via: '网络IP定位'
+        };
+      },
+      async () => {
+        const res = await fetch('https://ipwho.is/', {
+          signal: AbortSignal.timeout ? AbortSignal.timeout(4500) : undefined
+        });
+        const d = await res.json();
+        if (!d.success || !d.latitude || !d.longitude) throw new Error('ipwhois empty');
+        return {
+          lat: Number(d.latitude),
+          lng: Number(d.longitude),
+          city: d.city || d.region || '',
+          district: '',
+          label: [d.region, d.city].filter(Boolean).join('·') || '当前位置',
+          via: '网络IP定位'
+        };
+      }
+    ];
+    for (const fn of providers) {
+      try {
+        const loc = await fn();
+        if (loc && !isNaN(loc.lat) && !isNaN(loc.lng)) return loc;
+      } catch (_) {}
+    }
+    throw new Error('网络 IP 定位不可用');
+  }
 
-    const onPositionSuccess = async pos => {
-      const { latitude, longitude } = pos.coords;
-      state.location.lat = latitude;
-      state.location.lng = longitude;
+  function requestBrowserLocation(onAuthorized) {
+    const finishWithLocation = async (lat, lng, presetCity, presetDistrict, presetLabel, viaTag) => {
+      state.location.lat = lat;
+      state.location.lng = lng;
       state.location.ready = true;
       btnRelocate.textContent = '📍 重新定位';
       btnRelocate.classList.remove('loc-auth-btn');
 
-      try {
-        const data = await reverseGeocode(latitude, longitude);
-        const city = data.city || data.principalSubdivision || '';
-        const district = data.locality || '';
-        state.location.city = city;
-        state.location.district = district;
-        state.location.label = [city, district].filter(Boolean).join('·') || `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
-      } catch (_) {
-        state.location.city = '';
-        state.location.district = '';
-        state.location.label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+      if (presetLabel) {
+        state.location.city = presetCity || '';
+        state.location.district = presetDistrict || '';
+        state.location.label = presetLabel;
+      } else {
+        try {
+          const data = await reverseGeocode(lat, lng);
+          const city = data.city || data.principalSubdivision || '';
+          const district = data.locality || '';
+          state.location.city = city;
+          state.location.district = district;
+          state.location.label = [city, district].filter(Boolean).join('·') || `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+        } catch (_) {
+          state.location.city = '';
+          state.location.district = '';
+          state.location.label = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+        }
       }
 
+      if (viaTag) showToast(`📍 已通过${viaTag}识别：${state.location.label}`);
       await scanNearbyShops(true);
       if (typeof onAuthorized === 'function') onAuthorized();
     };
 
-    const onPositionFinalError = async err => {
-      // 如果用户在桌面 Chrome（国内无梯子）下遇到 code 2/3（谷歌网络定位服务不可达），且配置了高德 Key，可自动走高德 IP 定位兜底
-      if (err && err.code !== 1 && state.amapKey) {
+    const fallbackWithoutChrome = async err => {
+      // 用户主动点击「拒绝授权」(code 1) 时严格尊重用户选择
+      if (err && err.code === 1) {
+        state.location.ready = false;
+        state.nearbyShops = [];
+        locDot.classList.remove('loading');
+        locDot.classList.add('error');
+        btnRelocate.textContent = '📍 授权定位';
+        btnRelocate.classList.add('loc-auth-btn');
+        locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
+        showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧图标开启定位后重试');
+        syncUI();
+        return;
+      }
+
+      // 不依赖 Chrome/Google 定位服务：优先走高德国内 IP 定位，无高德 Key 则走免 Key 网络 IP 定位
+      try {
+        if (state.amapKey) {
+          locText.textContent = '正在使用高德国内定位...';
+          const amapLoc = await fetchAmapIPLocation(state.amapKey);
+          await finishWithLocation(amapLoc.lat, amapLoc.lng, amapLoc.city, amapLoc.district, amapLoc.label, amapLoc.via);
+          return;
+        }
+      } catch (_) {}
+
+      try {
+        locText.textContent = '正在通过国内可用网络定位识别当前位置...';
+        const ipLoc = await fetchFreeIPLocation();
+        // 再尝试用中文逆地理美化城市名
+        let cnLabel = ipLoc.label;
+        let cnCity = ipLoc.city;
         try {
-          locText.textContent = '系统定位不可达，正在尝试高德国内网络定位...';
-          const res = await fetch(`https://restapi.amap.com/v3/ip?key=${encodeURIComponent(state.amapKey)}`, {
-            signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
-          });
-          const data = await res.json();
-          if (data.status === '1' && typeof data.rectangle === 'string' && data.rectangle.includes(';')) {
-            const [p1, p2] = data.rectangle.split(';').map(s => s.split(',').map(Number));
-            if (p1.length === 2 && p2.length === 2) {
-              const lng = (p1[0] + p2[0]) / 2;
-              const lat = (p1[1] + p2[1]) / 2;
-              state.location.lat = lat;
-              state.location.lng = lng;
-              state.location.city = data.city || data.province || '';
-              state.location.district = '';
-              state.location.label = state.location.city || '当前城市';
-              state.location.ready = true;
-              btnRelocate.textContent = '📍 重新定位';
-              btnRelocate.classList.remove('loc-auth-btn');
-              await scanNearbyShops(true);
-              if (typeof onAuthorized === 'function') onAuthorized();
-              return;
-            }
+          const geo = await reverseGeocode(ipLoc.lat, ipLoc.lng);
+          const c = geo.city || geo.principalSubdivision || '';
+          const d = geo.locality || '';
+          if (c) {
+            cnCity = c;
+            cnLabel = [c, d].filter(Boolean).join('·');
           }
         } catch (_) {}
-      }
+        await finishWithLocation(ipLoc.lat, ipLoc.lng, cnCity, '', cnLabel, ipLoc.via);
+        return;
+      } catch (_) {}
 
       state.location.ready = false;
       state.nearbyShops = [];
@@ -1706,38 +1775,27 @@
       locDot.classList.add('error');
       btnRelocate.textContent = '📍 授权定位';
       btnRelocate.classList.add('loc-auth-btn');
-
-      if (err && err.code === 1) {
-        locText.textContent = '未获得定位授权 · 请在浏览器中允许位置权限';
-        showToast('⚠️ 浏览器拒绝了定位权限，请点击地址栏左侧图标开启定位后重试');
-      } else if (err && err.code === 2) {
-        locText.textContent = '国内桌面 Chrome 定位服务受限 · 建议用 Edge/手机浏览器或点 ⚙️ 配高德Key';
-        showToast('⚠️ 国内桌面 Chrome 无法访问 Google 定位接口，换 Edge/手机浏览器或配高德 Key 即可解决');
-      } else if (err && err.code === 3) {
-        locText.textContent = '定位超时 · 请检查系统定位开关，或换 Edge/手机浏览器重试';
-        showToast('⚠️ 定位超时，国内电脑建议用 Edge 或手机浏览器');
-      } else {
-        locText.textContent = '暂无法获取当前位置 · 请检查设备定位服务';
-        showToast('⚠️ 无法获取当前位置，请检查系统定位开关');
-      }
+      locText.textContent = '暂无法获取当前位置 · 请检查网络或点击 ⚙️ 配置高德 Key';
+      showToast('⚠️ 定位失败，请检查网络或配置高德 Key');
       syncUI();
     };
 
-    // 先用标准精度快速定位（国内 Wi-Fi/系统定位最快），若超时再尝试低精度宽容模式
+    locDot.classList.remove('error');
+    locDot.classList.add('loading');
+
+    // 若已配置高德 Key 且浏览器不支持 geolocation，直接走高德定位
+    if (!('geolocation' in navigator)) {
+      fallbackWithoutChrome({ code: 2 });
+      return;
+    }
+
+    locText.textContent = state.amapKey ? '正在定位（高德优先 / 浏览器授权）...' : '正在向浏览器请求位置授权...';
+
+    // 使用短超时 4.5 秒，避免国内桌面 Chrome 卡死在 Google 定位服务；失败立即无缝切到高德/网络 IP 定位
     navigator.geolocation.getCurrentPosition(
-      onPositionSuccess,
-      err => {
-        if (err && err.code === 1) {
-          onPositionFinalError(err);
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(
-          onPositionSuccess,
-          onPositionFinalError,
-          { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
-        );
-      },
-      { enableHighAccuracy: true, timeout: 6500, maximumAge: 60000 }
+      pos => finishWithLocation(pos.coords.latitude, pos.coords.longitude),
+      err => fallbackWithoutChrome(err),
+      { enableHighAccuracy: false, timeout: 4500, maximumAge: 180000 }
     );
   }
 
