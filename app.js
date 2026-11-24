@@ -2,15 +2,85 @@
   const aiCuratedDishes = window.AI_CURATED_DATA || [];
   const localSubstitutions = window.LOCAL_SUBSTITUTIONS || [];
 
-  // 合并 AI精选菜谱库 + 开源菜谱/外卖套餐库，并自动识别归类“懒人专区”菜品
+  // 解析中文/阿拉伯数字并从所有步骤中真实累计烹饪耗时（避免“预计15分钟”却要“小火炖50分钟”的矛盾！）
+  function parseChineseOrArabicNum(raw) {
+    const s = String(raw || '').trim();
+    if (/^\d+(?:\.\d+)?$/.test(s)) return parseFloat(s);
+    if (s === '半') return 0.5;
+    const map = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    if (s === '十') return 10;
+    if (s.includes('十')) {
+      const [l, r] = s.split('十');
+      const tens = l ? (map[l] || 1) * 10 : 10;
+      const ones = r ? (map[r] || 0) : 0;
+      return tens + ones;
+    }
+    return map[s] || 0;
+  }
+
+  function computeActualDishMinutes(dish) {
+    const steps = dish.steps || [];
+    let stepSumMin = 0;
+    let hasOvernight = false;
+
+    for (const rawStep of steps) {
+      const text = String(rawStep || '');
+      if (/(过夜|隔夜|一夜|冷藏.*小时|发酵.*小时|泡发.*小时)/.test(text)) {
+        hasOvernight = true;
+        continue;
+      }
+      // 同一句里若重复提到相同时间（如“小火50分钟（上图是熬完50分钟的效果）”），只取该步最大一次主耗时
+      let stepMaxMin = 0;
+      const timeRe = /([0-9.一二两三四五六七八九十半]+)(?:\s*[-~～至到]\s*([0-9.一二两三四五六七八九十]+))?\s*(小时|个半小时|分钟|分|秒)/g;
+      let m;
+      while ((m = timeRe.exec(text)) !== null) {
+        let v1 = parseChineseOrArabicNum(m[1]);
+        let v2 = m[2] ? parseChineseOrArabicNum(m[2]) : v1;
+        const unit = m[3];
+        if (!v1 && unit !== '个半小时') continue;
+        let mins = (v1 + v2) / 2;
+        if (unit === '个半小时') mins = (v1 + 0.5) * 60;
+        else if (unit === '小时') mins = mins * 60;
+        else if (unit === '秒') mins = mins / 60;
+        if (mins > 240) continue; // 排除极端腌制/发酵时长
+        if (mins > stepMaxMin) stepMaxMin = mins;
+      }
+      stepSumMin += stepMaxMin;
+    }
+
+    // 备菜与基础操作时间
+    const prepMin = Math.min(12, Math.max(4, Math.round(steps.length * 1.2)));
+    const totalMin = stepSumMin > 0 ? Math.round(stepSumMin + prepMin) : 0;
+    return { totalMin, stepSumMin: Math.round(stepSumMin), hasOvernight };
+  }
+
+  function formatEstimatedTime(totalMin, fallbackTime, hasOvernight) {
+    if (!totalMin || totalMin <= 0) return fallbackTime || '约 15~20 分钟';
+    let label = '';
+    if (totalMin <= 12) {
+      label = '约 10~15 分钟';
+    } else if (totalMin < 60) {
+      const rounded = Math.round(totalMin / 5) * 5;
+      label = `约 ${rounded} 分钟`;
+    } else {
+      const hrs = Math.floor(totalMin / 60);
+      const rem = Math.round((totalMin % 60) / 5) * 5;
+      if (rem >= 60) label = `约 ${hrs + 1} 小时`;
+      else if (rem > 0) label = `约 ${hrs}小时${rem}分钟`;
+      else label = `约 ${hrs} 小时`;
+    }
+    return hasOvernight ? `${label}（需提前泡发/腌制）` : label;
+  }
+
+  // 合并 AI精选菜谱库 + 开源菜谱/外卖套餐库，并基于真实步骤耗时准确归类“懒人专区”
   const lazyPattern = /(电饭煲|空气炸锅|微波炉|懒人|快手|泡面|方便面|拌面|汤面|蛋炒饭|炒饭|盖饭|丼|饭团|三明治|吐司|贝果|燕麦|蒸蛋|鸡蛋羹|荷包蛋|太阳蛋|煎蛋|炒蛋|手抓饼|煎饼|速冻|水饺|馄饨|抄手|凉拌|焖饭|一锅|葱油拌面|番茄炒蛋|西红柿炒鸡蛋|煮面|酸辣粉|螺蛳粉)/;
-  function detectLazyTool(d) {
+  function detectLazyTool(d, actualMin) {
     if (d.lazyTool) return d.lazyTool;
-    if (d.name.includes('电饭煲') || d.name.includes('焖饭') || d.name.includes('煲仔饭')) return '🍚 电饭煲一锅出';
+    if (d.name.includes('电饭煲') || d.name.includes('焖饭') || d.name.includes('煲仔饭')) return '🍚 电饭煲免看火';
     if (d.name.includes('空气炸锅') || d.name.includes('烤')) return '🍟 空气炸锅免看火';
     if (d.name.includes('微波炉')) return '📻 微波炉快手';
     if (/(凉拌|沙拉|三明治|吐司|燕麦|饭团)/.test(d.name)) return '🥗 免开火快手';
-    return '⚡ 10~15分钟一锅出';
+    return actualMin > 0 && actualMin <= 15 ? '⚡ 15分钟内快手' : '⚡ 少步一锅出';
   }
 
   const aiNames = new Set(aiCuratedDishes.map(d => d.name));
@@ -18,14 +88,18 @@
     .filter(d => !aiNames.has(d.name))
     .map(d => {
       if (d.modes && d.modes.includes('cook')) {
-        const isLazy = lazyPattern.test(d.name) || (d.steps && d.steps.length <= 4);
+        const { totalMin, stepSumMin, hasOvernight } = computeActualDishMinutes(d);
+        const accurateTime = stepSumMin >= 5 ? formatEstimatedTime(totalMin, d.time, hasOvernight) : (d.time || '约 15~20 分钟');
+        const isApplianceLazy = /(电饭煲|空气炸锅|微波炉)/.test(d.name);
+        const isQuickEnough = totalMin === 0 ? (d.steps && d.steps.length <= 4) : totalMin <= 22;
+        const isLazy = (isApplianceLazy || (lazyPattern.test(d.name) && (totalMin === 0 || totalMin <= 25)) || (d.steps && d.steps.length <= 4 && isQuickEnough)) && !hasOvernight;
+
+        const updated = { ...d, time: accurateTime };
         if (isLazy) {
-          return {
-            ...d,
-            modes: Array.from(new Set([...d.modes, 'lazy'])),
-            lazyTool: detectLazyTool(d)
-          };
+          updated.modes = Array.from(new Set([...d.modes, 'lazy']));
+          updated.lazyTool = detectLazyTool(d, totalMin);
         }
+        return updated;
       }
       return d;
     });
@@ -1909,8 +1983,8 @@
     let time = '';
     let svgIcon = '';
 
-    const timeMatch = stepText.match(/([0-9一二三四五六七八九十半]+(?:\s*[-~至]\s*[0-9]+)?\s*(?:分钟|秒|小时))/);
-    if (timeMatch) time = `⏱️ ${timeMatch[1].replace(/\s+/g, '')}`;
+    const timeMatch = stepText.match(/([0-9一二两三四五六七八九十半]+(?:\s*[-~～至到]\s*[0-9一二两三四五六七八九十]+)?\s*(?:分钟|秒|小时))/);
+    if (timeMatch) time = `🕒 ${timeMatch[1].replace(/\s+/g, '')}`;
 
     if (stepText.includes('大火') || stepText.includes('猛火')) heat = '🔥 大火';
     else if (stepText.includes('中小火')) heat = '🔉 中小火';
@@ -2440,7 +2514,7 @@
           ${dish.lazyTool ? `<span class="meta-pill" style="border-color:rgba(192,132,252,0.5);color:#e9d5ff;">${dish.lazyTool}</span>` : ''}
           ${dish.recipePath ? `<span class="meta-pill" style="border-color:rgba(56,189,248,0.5);color:#7dd3fc;">📖 含原版开源图文</span>` : ''}
           ${dish.bv ? `<span class="meta-pill" style="border-color:rgba(251,114,153,0.5);color:#fbcfe8;">📺 含B站原版视频</span>` : ''}
-          <span class="meta-pill">⏱️ ${time}</span>
+          <span class="meta-pill">🕒 ${time}</span>
           <span class="meta-pill">🔥 难度 ${difficulty}</span>
           <span class="meta-pill">🛒 食材 ${ings.length} 项</span>
           <span class="meta-pill">📑 共 ${steps.length} 步</span>
@@ -2580,7 +2654,11 @@
           const mdText = await res.text();
           const parsed = parseFullHowToCookMarkdown(mdText, dish.recipePath);
           if (parsed.ingredients.length >= 2) dish.ingredients = parsed.ingredients;
-          if (parsed.steps.length >= 2) dish.steps = parsed.steps;
+          if (parsed.steps.length >= 2) {
+            dish.steps = parsed.steps;
+            const { totalMin, stepSumMin, hasOvernight } = computeActualDishMinutes(dish);
+            if (stepSumMin >= 5) dish.time = formatEstimatedTime(totalMin, dish.time, hasOvernight);
+          }
           if (parsed.tips.length >= 1) dish.tips = parsed.tips;
           if (parsed.intro) dish.intro = parsed.intro;
           if (parsed.difficulty) dish.difficulty = parsed.difficulty;
