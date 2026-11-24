@@ -1729,7 +1729,7 @@
       const hintMap = {
         cook: { emoji: '🍳', title: '今日の自炊レシピを決めよう', mode: '代用ガイド＆分量換算付' },
         lazy: { emoji: '⚡', title: 'ズボラ時短飯を回そう', mode: 'レンチン・炊飯器・10分' },
-        takeout: { emoji: '🛵', title: '周辺のお店・宅配を決めよう', mode: '現在地検索＆星評価対応' },
+        takeout: { emoji: '🛵', title: '今日の外食・宅配メニューを決めよう', mode: 'マップ・宅配アプリ直結' },
         guess: { emoji: '❤️', title: 'あなたへのおすすめ抽選', mode: 'オフライン好みカルテ連動' }
       };
       const hint = hintMap[state.mode] || hintMap.cook;

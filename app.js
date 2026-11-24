@@ -2393,7 +2393,7 @@
       const hintMap = {
         cook: { emoji: '🍳', title: '准备抽取今日食谱', mode: '含本土食材平替' },
         lazy: { emoji: '⚡', title: '准备抽取懒人快手菜', mode: '电饭煲/炸锅/10分钟' },
-        takeout: { emoji: '🛵', title: '准备抽取周边外卖店铺', mode: '支持星级评价展示' },
+        takeout: { emoji: '🛵', title: '准备抽取今日外卖菜品', mode: '一键带词跳地图/外卖' },
         guess: { emoji: '❤️', title: '猜你喜欢 · 专属抽选', mode: '本地饮食画像智能匹配' }
       };
       const hint = hintMap[state.mode] || hintMap.cook;
